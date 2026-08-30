@@ -70,6 +70,7 @@ def create_app():
     @app.before_request
     def enforce_login_and_savegame():
         endpoint = request.endpoint or ''
+        blueprint = request.blueprint or ''
         if endpoint.startswith('auth.') or endpoint in {'static', 'serve_asset'}:
             return None
         if not current_user.is_authenticated:
@@ -83,6 +84,15 @@ def create_app():
         ):
             flash('Dieser Spielstand ist für deinen Benutzer schreibgeschützt.', 'danger')
             return redirect(url_for('vehicles.index'))
+
+        is_write = request.method not in {'GET', 'HEAD', 'OPTIONS'}
+        global_catalog_blueprints = {'vehicles', 'modules', 'wachen'}
+        global_catalog_endpoints = {'standards.save_standard_modules'}
+        if is_write and (blueprint in global_catalog_blueprints or endpoint in global_catalog_endpoints):
+            from app.access import active_savegame_is_admin
+            if not active_savegame_is_admin():
+                flash('Fahrzeugtypen, Wachentypen und Module sind global und nur im Admin-Spielstand editierbar.', 'danger')
+                return redirect(url_for('vehicles.index'))
         return None
 
     @app.context_processor
@@ -94,6 +104,7 @@ def create_app():
                 'user_savegames': [],
                 'current_membership_role': None,
                 'current_savegame_members': [],
+                'current_savegame_is_admin': False,
             }
 
         from app.access import get_active_savegame_id
@@ -120,6 +131,7 @@ def create_app():
             'user_savegames': savegames,
             'current_membership_role': membership.role if membership else None,
             'current_savegame_members': savegame_members,
+            'current_savegame_is_admin': bool(current_savegame and current_savegame.is_admin),
         }
 
     from app.routes.auth import auth_bp
@@ -153,6 +165,7 @@ def create_app():
         _migrate_maintenance_costs_if_needed(db)
         _migrate_wache_initial_levels_if_needed(db)
         _migrate_auth_and_savegames_if_needed(db)
+        _migrate_admin_savegame_flag_if_needed(db)
         _bootstrap_auth_defaults()
 
     return app
@@ -205,11 +218,15 @@ def _bootstrap_auth_defaults():
         db.session.add(admin_user)
         db.session.flush()
 
-    default_savegame = Savegame.query.order_by(Savegame.id).first()
+    default_savegame = Savegame.query.filter_by(is_admin=True).order_by(Savegame.id).first()
     if not default_savegame:
-        default_savegame = Savegame(name='Standard', created_by_user_id=admin_user.id)
+        default_savegame = Savegame.query.order_by(Savegame.id).first()
+    if not default_savegame:
+        default_savegame = Savegame(name='Admin', is_admin=True, created_by_user_id=admin_user.id)
         db.session.add(default_savegame)
         db.session.flush()
+    else:
+        default_savegame.is_admin = True
 
     membership = SavegameMembership.query.filter_by(
         user_id=admin_user.id,
@@ -225,11 +242,6 @@ def _bootstrap_auth_defaults():
         )
 
     scoped_models = [
-        VehicleType,
-        VehicleModule,
-        WacheType,
-        WacheLevel,
-        WacheUpgrade,
         NamingOrgType,
         NamingLocation,
         MyWache,
@@ -237,8 +249,22 @@ def _bootstrap_auth_defaults():
         PlanItem,
     ]
 
+    global_catalog_models = [
+        VehicleType,
+        VehicleModule,
+        WacheType,
+        WacheLevel,
+        WacheUpgrade,
+    ]
+
     for model in scoped_models:
         model.query.filter(model.savegame_id.is_(None)).update(
+            {model.savegame_id: default_savegame.id},
+            synchronize_session=False,
+        )
+
+    for model in global_catalog_models:
+        model.query.update(
             {model.savegame_id: default_savegame.id},
             synchronize_session=False,
         )
@@ -478,6 +504,7 @@ def _migrate_auth_and_savegames_if_needed(database):
                 'CREATE TABLE savegame ('
                 'id INTEGER PRIMARY KEY, '
                 'name VARCHAR(120) NOT NULL, '
+                'is_admin BOOLEAN NOT NULL DEFAULT 0, '
                 'created_by_user_id INTEGER REFERENCES "user"(id), '
                 'created_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL)'
             ))
@@ -517,3 +544,20 @@ def _migrate_auth_and_savegames_if_needed(database):
                 conn.execute(sqlalchemy.text(
                     f'ALTER TABLE {table} ADD COLUMN savegame_id INTEGER REFERENCES savegame(id)'
                 ))
+
+
+def _migrate_admin_savegame_flag_if_needed(database):
+    import sqlalchemy
+
+    engine = database.engine
+    inspector = sqlalchemy.inspect(engine)
+
+    if 'savegame' not in inspector.get_table_names():
+        return
+
+    columns = [c['name'] for c in inspector.get_columns('savegame')]
+    with engine.begin() as conn:
+        if 'is_admin' not in columns:
+            conn.execute(sqlalchemy.text(
+                'ALTER TABLE savegame ADD COLUMN is_admin BOOLEAN NOT NULL DEFAULT 0'
+            ))

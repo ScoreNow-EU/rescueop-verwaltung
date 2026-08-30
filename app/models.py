@@ -26,6 +26,7 @@ class Savegame(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(120), nullable=False)
+    is_admin = db.Column(db.Boolean, nullable=False, default=False)
     created_by_user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
     created_at = db.Column(db.DateTime, nullable=False, server_default=db.func.now())
 
