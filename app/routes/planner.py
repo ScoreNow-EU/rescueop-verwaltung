@@ -59,8 +59,8 @@ def _make_planned_wache_entry(plan_item):
         wache_type=plan_item.wache_type,
         current_level=initial_level,
         vehicles=[],
-        org_type=None,
-        location=None,
+        org_type=plan_item.wache_org_type,
+        location=plan_item.wache_location,
         max_vehicles=max_vehicles,
         effective_max_vehicles=max_vehicles,
     )
@@ -209,7 +209,7 @@ def index():
                 'count': 0,
                 'max': w.max_vehicles,
                 '_base_max': w.max_vehicles,
-                'level': 1,
+                'level': w.current_level,
                 'name': w.name,
                 'wache_type': w.wache_type,
             }
@@ -320,11 +320,31 @@ def index():
 def add_wache_buy():
     wache_type_id = request.form.get('wache_type_id', type=int)
     wache_name = request.form.get('wache_name', '').strip()
+    wache_org_type_id = request.form.get('naming_org_type_id', type=int) or None
+    wache_location_id = request.form.get('naming_location_id', type=int) or None
+    include_all_upgrades = request.form.get('include_all_upgrades') == '1'
+    include_all_extensions = request.form.get('include_all_extensions') == '1'
     notes = request.form.get('notes', '').strip() or None
 
     if not wache_type_id or not wache_name:
         flash('Name und Wachen-Typ sind erforderlich.', 'danger')
         return redirect(url_for('planner.index'))
+
+    wache_type = scoped(WacheType).filter_by(id=wache_type_id).first()
+    if not wache_type:
+        flash('Wachen-Typ konnte nicht gefunden werden.', 'danger')
+        return redirect(url_for('planner.index'))
+
+    org_type = scoped(NamingOrgType).filter_by(id=wache_org_type_id).first() if wache_org_type_id else None
+    location = scoped(NamingLocation).filter_by(id=wache_location_id).first() if wache_location_id else None
+    if wache_org_type_id and not org_type:
+        flash('Org-Typ konnte nicht gefunden werden.', 'danger')
+        return redirect(url_for('planner.index'))
+    if wache_location_id and not location:
+        flash('Standort konnte nicht gefunden werden.', 'danger')
+        return redirect(url_for('planner.index'))
+    if org_type and org_type.no_location:
+        wache_location_id = None
 
 
     max_prio = _next_priority()
@@ -332,13 +352,55 @@ def add_wache_buy():
         category='wache_buy',
         wache_name=wache_name,
         wache_type_id=wache_type_id,
+        wache_org_type_id=wache_org_type_id,
+        wache_location_id=wache_location_id,
         priority=max_prio + 1,
         notes=notes,
     )
     assign_active_savegame(item)
     db.session.add(item)
+
+    db.session.flush()
+
+    next_priority = max_prio + 1
+    extras_added = 0
+
+    if include_all_upgrades:
+        level_numbers = sorted(l.level_number for l in wache_type.levels)
+        if level_numbers:
+            initial_level = level_numbers[0]
+            for target_level in level_numbers:
+                if target_level <= initial_level:
+                    continue
+                next_priority += 1
+                up_item = PlanItem(
+                    category='wache_upgrade',
+                    target_wache_plan_item_id=item.id,
+                    target_level=target_level,
+                    priority=next_priority,
+                )
+                assign_active_savegame(up_item)
+                db.session.add(up_item)
+                extras_added += 1
+
+    if include_all_extensions:
+        for upgrade in sorted(wache_type.upgrades, key=lambda u: (u.name or '').lower()):
+            next_priority += 1
+            ext_item = PlanItem(
+                category='wache_extension',
+                extension_wache_plan_item_id=item.id,
+                wache_upgrade_id=upgrade.id,
+                priority=next_priority,
+            )
+            assign_active_savegame(ext_item)
+            db.session.add(ext_item)
+            extras_added += 1
+
     db.session.commit()
-    flash(f'Wache „{wache_name}" zum Planer hinzugefügt.', 'success')
+    if extras_added:
+        flash(f'Wache „{wache_name}" inkl. {extras_added} Folgeeinträgen zum Planer hinzugefügt.', 'success')
+    else:
+        flash(f'Wache „{wache_name}" zum Planer hinzugefügt.', 'success')
     return redirect(url_for('planner.index'))
 
 
@@ -518,8 +580,16 @@ def mark_done(pid):
             w.name = item.wache_name
             w.wache_type_id = item.wache_type_id
             w.current_level = max(w.current_level, initial_level)
+            w.naming_org_type_id = item.wache_org_type_id
+            w.naming_location_id = item.wache_location_id
         else:
-            w = MyWache(name=item.wache_name, wache_type_id=item.wache_type_id, current_level=initial_level)
+            w = MyWache(
+                name=item.wache_name,
+                wache_type_id=item.wache_type_id,
+                current_level=initial_level,
+                naming_org_type_id=item.wache_org_type_id,
+                naming_location_id=item.wache_location_id,
+            )
             assign_active_savegame(w)
             db.session.add(w)
             item.created_wache = w

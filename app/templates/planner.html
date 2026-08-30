@@ -247,10 +247,10 @@
                             <div class="row g-2 mb-2 align-items-end">
                                 <div class="col-5">
                                     <label class="form-label">Org-Typ</label>
-                                    <select class="form-select form-select-sm" id="wacheBuyOrg">
-                                        <option value="" data-no-location="0">— keiner —</option>
+                                    <select class="form-select form-select-sm" id="wacheBuyOrg" name="naming_org_type_id">
+                                        <option value="" data-no-location="0" data-abbr="">— keiner —</option>
                                         {% for o in org_types %}
-                                        <option value="{{ o.abbreviation }}" data-no-location="{{ '1' if o.no_location else '0' }}">
+                                        <option value="{{ o.id }}" data-no-location="{{ '1' if o.no_location else '0' }}" data-abbr="{{ o.abbreviation }}">
                                             {{ o.abbreviation }} – {{ o.full_name }}
                                         </option>
                                         {% endfor %}
@@ -258,10 +258,10 @@
                                 </div>
                                 <div class="col-4" id="wacheBuyLocDiv">
                                     <label class="form-label">Standort</label>
-                                    <select class="form-select form-select-sm" id="wacheBuyLoc">
-                                        <option value="">— keiner —</option>
+                                    <select class="form-select form-select-sm" id="wacheBuyLoc" name="naming_location_id">
+                                        <option value="" data-abbr="">— keiner —</option>
                                         {% for l in locations %}
-                                        <option value="{{ l.abbreviation }}">{{ l.abbreviation }} – {{ l.full_name }}</option>
+                                        <option value="{{ l.id }}" data-abbr="{{ l.abbreviation }}">{{ l.abbreviation }} – {{ l.full_name }}</option>
                                         {% endfor %}
                                     </select>
                                 </div>
@@ -285,9 +285,28 @@
                                 <select name="wache_type_id" class="form-select" required id="wacheBuyType">
                                     <option value="">— wählen —</option>
                                     {% for wt in wache_types %}
-                                    <option value="{{ wt.id }}" data-cost="{{ wt.levels[0].cost if wt.levels else 0 }}" data-max-vehicles="{{ wt.levels[0].max_vehicles if wt.levels else 0 }}">{{ wt.name }}</option>
+                                    <option value="{{ wt.id }}"
+                                            data-cost="{{ wt.levels[0].cost if wt.levels else 0 }}"
+                                            data-max-vehicles="{{ wt.levels[0].max_vehicles if wt.levels else 0 }}"
+                                            data-level-count="{{ wt.levels|length }}"
+                                            data-upgrade-count="{{ wt.upgrades|length }}">{{ wt.name }}</option>
                                     {% endfor %}
                                 </select>
+                            </div>
+                            <div class="mb-3">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="wacheBuyAllLevels" name="include_all_upgrades" value="1">
+                                    <label class="form-check-label" for="wacheBuyAllLevels">
+                                        Alle Ausbaustufen direkt als Folgeeinträge hinzufügen
+                                    </label>
+                                </div>
+                                <div class="form-check mt-1">
+                                    <input class="form-check-input" type="checkbox" id="wacheBuyAllExtensions" name="include_all_extensions" value="1">
+                                    <label class="form-check-label" for="wacheBuyAllExtensions">
+                                        Alle Erweiterungen direkt als Folgeeinträge hinzufügen
+                                    </label>
+                                </div>
+                                <small class="text-muted d-block mt-1" id="wacheBuyBulkHint"></small>
                             </div>
                             <div class="mb-2" id="wacheBuyCost" style="display:none">
                                 <span class="fw-bold">Kosten: <span id="wacheBuyCostVal"></span> €</span>
@@ -431,14 +450,14 @@
                             <option disabled>— geplante Wachen —</option>
                             {% for w in planner_wachen if w.kind == 'planned' %}
                             <option value="{{ w.ref }}"
-                                    data-org="{{ w.name }}"
-                                    data-org-full="{{ w.name }}"
+                                    data-org="{{ w.org_type.abbreviation if w.org_type else '' }}"
+                                    data-org-full="{{ w.org_type.full_name if w.org_type else '' }}"
                                     data-name="{{ w.name }}"
-                                    data-loc=""
-                                    data-loc-full=""
-                                    data-no-loc="1"
+                                    data-loc="{{ w.location.abbreviation if w.location else '' }}"
+                                    data-loc-full="{{ w.location.full_name if w.location else '' }}"
+                                    data-no-loc="{{ '1' if (w.org_type and w.org_type.no_location) else '0' }}"
                                     data-wache-type="{{ w.wache_type.name if w.wache_type else '' }}"
-                                    data-wache-level="1">
+                                    data-wache-level="{{ w.current_level }}">
                                 {{ w.name }} (0/{{ w.max_vehicles }} Fzg., geplant)
                             </option>
                             {% endfor %}
@@ -1032,25 +1051,31 @@ function initPlannerPage() {
     const wacheBuyNrDiv = document.getElementById('wacheBuyNrDiv');
     const wacheBuyName = document.getElementById('wacheBuyName');
     const wacheBuyGenBtn = document.getElementById('wacheBuyGenBtn');
+    const wacheBuyBulkHint = document.getElementById('wacheBuyBulkHint');
 
     function applyNoLocWache() {
         if (!wacheBuyOrg) return;
         const opt = wacheBuyOrg.options[wacheBuyOrg.selectedIndex];
+        const orgAbbr = opt ? (opt.dataset.abbr || '') : '';
         const noLoc = opt && opt.dataset.noLocation === '1';
         if (wacheBuyLocDiv) wacheBuyLocDiv.style.display = noLoc ? 'none' : '';
         if (wacheBuyNrDiv) wacheBuyNrDiv.style.display = noLoc ? '' : 'none';
-        if (noLoc && wacheBuyNr && opt.value) {
-            wacheBuyNr.value = orgWacheNext[opt.value] || 1;
+        if (noLoc && wacheBuyNr && orgAbbr) {
+            wacheBuyNr.value = orgWacheNext[orgAbbr] || 1;
+        }
+        if (noLoc && wacheBuyLoc) {
+            wacheBuyLoc.value = '';
         }
     }
 
     function generateWacheName() {
         if (!wacheBuyOrg) return '';
         const opt = wacheBuyOrg.options[wacheBuyOrg.selectedIndex];
-        const org = opt ? opt.value : '';
+        const org = opt ? (opt.dataset.abbr || '') : '';
         const noLoc = opt && opt.dataset.noLocation === '1';
         const nr = (wacheBuyNr && noLoc) ? wacheBuyNr.value.trim() : '';
-        const loc = (wacheBuyLoc && !noLoc) ? wacheBuyLoc.value.trim() : '';
+        const locOpt = (wacheBuyLoc && !noLoc) ? wacheBuyLoc.options[wacheBuyLoc.selectedIndex] : null;
+        const loc = locOpt ? (locOpt.dataset.abbr || '').trim() : '';
         if (noLoc && nr) return org + nr;
         const parts = [];
         if (org) parts.push(org);
@@ -1058,9 +1083,29 @@ function initPlannerPage() {
         return parts.join('-');
     }
 
+    function updateWacheBuyBulkHint() {
+        if (!wacheBuyType || !wacheBuyBulkHint) {
+            return;
+        }
+        const opt = wacheBuyType.options[wacheBuyType.selectedIndex];
+        if (!opt || !opt.value) {
+            wacheBuyBulkHint.textContent = '';
+            return;
+        }
+        const levelCount = parseInt(opt.dataset.levelCount || '0', 10) || 0;
+        const upgradeCount = parseInt(opt.dataset.upgradeCount || '0', 10) || 0;
+        const extraLevels = Math.max(0, levelCount - 1);
+        wacheBuyBulkHint.textContent = 'Dieser Typ hat ' + extraLevels + ' zusätzliche Ausbaustufe(n) und ' + upgradeCount + ' Erweiterung(en).';
+    }
+
     if (wacheBuyOrg) {
         wacheBuyOrg.addEventListener('change', applyNoLocWache);
         applyNoLocWache();
+    }
+
+    if (wacheBuyType) {
+        wacheBuyType.addEventListener('change', updateWacheBuyBulkHint);
+        updateWacheBuyBulkHint();
     }
 
     if (wacheBuyGenBtn) {

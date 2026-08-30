@@ -284,6 +284,8 @@ class PlanItem(db.Model):
     # For wache_buy: new wache name + type
     wache_name = db.Column(db.String(120), nullable=True)
     wache_type_id = db.Column(db.Integer, db.ForeignKey('wache_type.id'), nullable=True)
+    wache_org_type_id = db.Column(db.Integer, db.ForeignKey('naming_org_type.id'), nullable=True)
+    wache_location_id = db.Column(db.Integer, db.ForeignKey('naming_location.id'), nullable=True)
     created_wache_id = db.Column(db.Integer, db.ForeignKey('my_wache.id'), nullable=True)
 
     # For wache_upgrade: existing wache + target level
@@ -304,6 +306,8 @@ class PlanItem(db.Model):
 
     # Relationships
     wache_type = db.relationship('WacheType', foreign_keys=[wache_type_id])
+    wache_org_type = db.relationship('NamingOrgType', foreign_keys=[wache_org_type_id])
+    wache_location = db.relationship('NamingLocation', foreign_keys=[wache_location_id])
     created_wache = db.relationship('MyWache', foreign_keys=[created_wache_id])
     target_wache = db.relationship('MyWache', foreign_keys=[target_wache_id])
     vehicle_type = db.relationship('VehicleType', foreign_keys=[vehicle_type_id])

@@ -1,8 +1,10 @@
 import os
+import sqlite3
 
 from flask import Flask, flash, redirect, request, session, url_for
 from flask_login import LoginManager, current_user
 from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy import event
 
 
 db = SQLAlchemy()
@@ -50,6 +52,11 @@ def create_app():
             connect_args['sslmode'] = 'require'
         if connect_args:
             engine_options['connect_args'] = connect_args
+    elif database_url.startswith('sqlite:///'):
+        engine_options['connect_args'] = {
+            'timeout': float(os.environ.get('SQLITE_BUSY_TIMEOUT_SECONDS', '1.2')),
+            'check_same_thread': False,
+        }
     app.config['SQLALCHEMY_ENGINE_OPTIONS'] = engine_options
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
@@ -60,6 +67,15 @@ def create_app():
     db.init_app(app)
     login_manager.init_app(app)
     login_manager.login_view = 'auth.login'
+
+    def _set_sqlite_pragma(dbapi_connection, _connection_record):
+        if not isinstance(dbapi_connection, sqlite3.Connection):
+            return
+        cursor = dbapi_connection.cursor()
+        cursor.execute('PRAGMA journal_mode=WAL')
+        cursor.execute('PRAGMA synchronous=NORMAL')
+        cursor.execute('PRAGMA busy_timeout=1200')
+        cursor.close()
 
     from flask import send_from_directory
 
@@ -155,12 +171,16 @@ def create_app():
     with app.app_context():
         from app import models  # noqa: F401
 
+        if database_url.startswith('sqlite:///'):
+            event.listen(db.engine, 'connect', _set_sqlite_pragma)
+
         db.create_all()
         _migrate_modules_if_needed(db)
         _migrate_planner_if_needed(db)
         _migrate_max_vehicles_if_needed(db)
         _migrate_wache_extensions_if_needed(db)
         _migrate_plan_item_refs_if_needed(db)
+        _migrate_plan_item_wache_meta_if_needed(db)
         _migrate_standards_if_needed(db)
         _migrate_maintenance_costs_if_needed(db)
         _migrate_wache_initial_levels_if_needed(db)
@@ -386,6 +406,26 @@ def _migrate_plan_item_refs_if_needed(database):
         if 'extension_wache_plan_item_id' not in columns:
             conn.execute(sqlalchemy.text(
                 'ALTER TABLE plan_item ADD COLUMN extension_wache_plan_item_id INTEGER REFERENCES plan_item(id)'
+            ))
+
+
+def _migrate_plan_item_wache_meta_if_needed(database):
+    import sqlalchemy
+
+    engine = database.engine
+    inspector = sqlalchemy.inspect(engine)
+
+    if 'plan_item' not in inspector.get_table_names():
+        return
+    columns = [c['name'] for c in inspector.get_columns('plan_item')]
+    with engine.begin() as conn:
+        if 'wache_org_type_id' not in columns:
+            conn.execute(sqlalchemy.text(
+                'ALTER TABLE plan_item ADD COLUMN wache_org_type_id INTEGER REFERENCES naming_org_type(id)'
+            ))
+        if 'wache_location_id' not in columns:
+            conn.execute(sqlalchemy.text(
+                'ALTER TABLE plan_item ADD COLUMN wache_location_id INTEGER REFERENCES naming_location(id)'
             ))
 
 
