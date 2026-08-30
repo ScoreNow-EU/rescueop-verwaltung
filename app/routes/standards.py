@@ -559,7 +559,11 @@ def import_database():
             flash('Die hochgeladene Datei ist keine gültige SQLite-Datenbank.', 'danger')
             return redirect(url_for('standards.index'))
 
-        include_global = active_savegame_is_admin()
+        include_global_requested = request.form.get('include_global') == '1'
+        include_global = bool(include_global_requested and active_savegame_is_admin())
+        if include_global_requested and not include_global:
+            flash('Globale Kataloge dürfen nur im Admin-Spielstand importiert werden.', 'danger')
+            return redirect(url_for('standards.index'))
 
         if db_uri.startswith('sqlite:') and include_global:
             db.session.remove()
