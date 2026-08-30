@@ -55,19 +55,19 @@
                                 <form method="post" action="/vehicles/{{ vt.id }}/edit" enctype="multipart/form-data" class="row g-2 mb-4 align-items-end" data-async="1" data-keep-open-id="vt-{{ vt.id }}">
                                     <div class="col-md-2">
                                         <label class="form-label">Name</label>
-                                        <input type="text" name="name" class="form-control" value="{{ vt.name }}" required>
+                                        <input type="text" name="name" class="form-control" value="{{ vt.name }}" required {% if catalog_read_only %}disabled{% endif %}>
                                     </div>
                                     <div class="col-md-2">
                                         <label class="form-label">Grundpreis (€)</label>
-                                        <input type="number" step="0.01" name="base_price" class="form-control" value="{{ vt.base_price }}">
+                                        <input type="number" step="0.01" name="base_price" class="form-control" value="{{ vt.base_price }}" {% if catalog_read_only %}disabled{% endif %}>
                                     </div>
                                     <div class="col-md-2">
                                         <label class="form-label">Unterhalt (€)</label>
-                                        <input type="number" step="0.01" name="maintenance_cost" class="form-control" value="{{ vt.maintenance_cost }}">
+                                        <input type="number" step="0.01" name="maintenance_cost" class="form-control" value="{{ vt.maintenance_cost }}" {% if catalog_read_only %}disabled{% endif %}>
                                     </div>
                                     <div class="col-md-2">
                                         <label class="form-label">Vorhandenes Bild</label>
-                                        <select name="existing_image" class="form-select">
+                                        <select name="existing_image" class="form-select" {% if catalog_read_only %}disabled{% endif %}>
                                             <option value="">— keins —</option>
                                             {% for img in existing_images %}
                                             <option value="{{ img }}" {% if vt.image == img %}selected{% endif %}>{{ img }}</option>
@@ -76,24 +76,28 @@
                                     </div>
                                     <div class="col-md-2">
                                         <label class="form-label">Oder hochladen</label>
-                                        <input type="file" name="image_upload" class="form-control" accept="image/*">
+                                        <input type="file" name="image_upload" class="form-control" accept="image/*" {% if catalog_read_only %}disabled{% endif %}>
                                     </div>
                                     <div class="col-md-1">
                                         <div class="form-check mt-2">
                                             <input class="form-check-input" type="checkbox" name="is_standard" id="is_std-{{ vt.id }}"
-                                                   {% if vt.is_standard %}checked{% endif %}>
+                                                   {% if vt.is_standard %}checked{% endif %} {% if catalog_read_only %}disabled{% endif %}>
                                             <label class="form-check-label" for="is_std-{{ vt.id }}">
                                                 Standard
                                             </label>
                                         </div>
                                     </div>
                                     <div class="col-md-1 d-flex gap-1">
+                                        {% if not catalog_read_only %}
                                         <button type="submit" class="btn btn-sm btn-outline-primary"><i class="bi bi-check-lg"></i> Speichern</button>
                                         <form method="post" action="/vehicles/{{ vt.id }}/delete" class="d-inline" data-async="1" data-confirm-msg="Fahrzeugtyp &quot;{{ vt.name }}&quot; wirklich löschen?">
                                             <button type="submit" class="btn btn-sm btn-outline-danger">
                                                 <i class="bi bi-trash"></i>
                                             </button>
                                         </form>
+                                        {% else %}
+                                        <span class="text-muted small">Read-Only</span>
+                                        {% endif %}
                                     </div>
                                 </form>
 
@@ -107,7 +111,7 @@
                                             <div class="form-check">
                                                 <input class="form-check-input" type="checkbox" name="module_ids"
                                                        value="{{ mod.id }}" id="mod-{{ vt.id }}-{{ mod.id }}"
-                                                       {% if mod in vt.modules %}checked{% endif %}>
+                                                          {% if mod in vt.modules %}checked{% endif %} {% if catalog_read_only %}disabled{% endif %}>
                                                 <label class="form-check-label" for="mod-{{ vt.id }}-{{ mod.id }}">
                                                     {{ mod.name }} <small class="text-muted">({{ '{:,.0f}'.format(mod.price).replace(',', '.') }} €)</small>
                                                 </label>
@@ -115,7 +119,11 @@
                                         </div>
                                         {% endfor %}
                                     </div>
+                                    {% if not catalog_read_only %}
                                     <button type="submit" class="btn btn-sm btn-outline-primary"><i class="bi bi-check-lg me-1"></i>Module speichern</button>
+                                    {% else %}
+                                    <span class="text-muted small">Read-Only</span>
+                                    {% endif %}
                                 </form>
                                 {% if vt.modules %}
                                 <div class="mt-2">
@@ -170,19 +178,19 @@
                                 <form method="post" action="/vehicles/{{ vt.id }}/edit" enctype="multipart/form-data" class="row g-2 mb-4 align-items-end" data-async="1" data-keep-open-id="vt-{{ vt.id }}">
                                     <div class="col-md-2">
                                         <label class="form-label">Name</label>
-                                        <input type="text" name="name" class="form-control" value="{{ vt.name }}" required>
+                                        <input type="text" name="name" class="form-control" value="{{ vt.name }}" required {% if catalog_read_only %}disabled{% endif %}>
                                     </div>
                                     <div class="col-md-2">
                                         <label class="form-label">Grundpreis (€)</label>
-                                        <input type="number" step="0.01" name="base_price" class="form-control" value="{{ vt.base_price }}">
+                                        <input type="number" step="0.01" name="base_price" class="form-control" value="{{ vt.base_price }}" {% if catalog_read_only %}disabled{% endif %}>
                                     </div>
                                     <div class="col-md-2">
                                         <label class="form-label">Unterhalt (€)</label>
-                                        <input type="number" step="0.01" name="maintenance_cost" class="form-control" value="{{ vt.maintenance_cost }}">
+                                        <input type="number" step="0.01" name="maintenance_cost" class="form-control" value="{{ vt.maintenance_cost }}" {% if catalog_read_only %}disabled{% endif %}>
                                     </div>
                                     <div class="col-md-2">
                                         <label class="form-label">Vorhandenes Bild</label>
-                                        <select name="existing_image" class="form-select">
+                                        <select name="existing_image" class="form-select" {% if catalog_read_only %}disabled{% endif %}>
                                             <option value="">— keins —</option>
                                             {% for img in existing_images %}
                                             <option value="{{ img }}" {% if vt.image == img %}selected{% endif %}>{{ img }}</option>
@@ -191,24 +199,28 @@
                                     </div>
                                     <div class="col-md-2">
                                         <label class="form-label">Oder hochladen</label>
-                                        <input type="file" name="image_upload" class="form-control" accept="image/*">
+                                        <input type="file" name="image_upload" class="form-control" accept="image/*" {% if catalog_read_only %}disabled{% endif %}>
                                     </div>
                                     <div class="col-md-1">
                                         <div class="form-check mt-2">
                                             <input class="form-check-input" type="checkbox" name="is_standard" id="is_std-{{ vt.id }}"
-                                                   {% if vt.is_standard %}checked{% endif %}>
+                                                   {% if vt.is_standard %}checked{% endif %} {% if catalog_read_only %}disabled{% endif %}>
                                             <label class="form-check-label" for="is_std-{{ vt.id }}">
                                                 Standard
                                             </label>
                                         </div>
                                     </div>
                                     <div class="col-md-1 d-flex gap-1">
+                                        {% if not catalog_read_only %}
                                         <button type="submit" class="btn btn-sm btn-outline-primary"><i class="bi bi-check-lg"></i> Speichern</button>
                                         <form method="post" action="/vehicles/{{ vt.id }}/delete" class="d-inline" data-async="1" data-confirm-msg="Fahrzeugtyp &quot;{{ vt.name }}&quot; wirklich löschen?">
                                             <button type="submit" class="btn btn-sm btn-outline-danger">
                                                 <i class="bi bi-trash"></i>
                                             </button>
                                         </form>
+                                        {% else %}
+                                        <span class="text-muted small">Read-Only</span>
+                                        {% endif %}
                                     </div>
                                 </form>
 
@@ -222,7 +234,7 @@
                                             <div class="form-check">
                                                 <input class="form-check-input" type="checkbox" name="module_ids"
                                                        value="{{ mod.id }}" id="mod-{{ vt.id }}-{{ mod.id }}"
-                                                       {% if mod in vt.modules %}checked{% endif %}>
+                                                          {% if mod in vt.modules %}checked{% endif %} {% if catalog_read_only %}disabled{% endif %}>
                                                 <label class="form-check-label" for="mod-{{ vt.id }}-{{ mod.id }}">
                                                     {{ mod.name }} <small class="text-muted">({{ '{:,.0f}'.format(mod.price).replace(',', '.') }} €)</small>
                                                 </label>
@@ -230,7 +242,11 @@
                                         </div>
                                         {% endfor %}
                                     </div>
+                                    {% if not catalog_read_only %}
                                     <button type="submit" class="btn btn-sm btn-outline-primary"><i class="bi bi-check-lg me-1"></i>Module speichern</button>
+                                    {% else %}
+                                    <span class="text-muted small">Read-Only</span>
+                                    {% endif %}
                                 </form>
                                 {% if vt.modules %}
                                 <div class="mt-2">
@@ -265,19 +281,19 @@
             <div class="modal-body">
                 <div class="mb-3">
                     <label class="form-label">Name</label>
-                    <input type="text" name="name" class="form-control" required autofocus>
+                    <input type="text" name="name" class="form-control" required autofocus {% if catalog_read_only %}disabled{% endif %}>
                 </div>
                 <div class="mb-3">
                     <label class="form-label">Grundpreis (€)</label>
-                    <input type="number" step="0.01" name="base_price" class="form-control" value="0">
+                    <input type="number" step="0.01" name="base_price" class="form-control" value="0" {% if catalog_read_only %}disabled{% endif %}>
                 </div>
                 <div class="mb-3">
                     <label class="form-label">Unterhaltskosten (€)</label>
-                    <input type="number" step="0.01" name="maintenance_cost" class="form-control" value="0">
+                    <input type="number" step="0.01" name="maintenance_cost" class="form-control" value="0" {% if catalog_read_only %}disabled{% endif %}>
                 </div>
                 <div class="mb-3">
                     <label class="form-label">Vorhandenes Bild wählen</label>
-                    <select name="existing_image" class="form-select">
+                    <select name="existing_image" class="form-select" {% if catalog_read_only %}disabled{% endif %}>
                         <option value="">— keins —</option>
                         {% for img in existing_images %}
                         <option value="{{ img }}">{{ img }}</option>
@@ -286,11 +302,11 @@
                 </div>
                 <div class="mb-3">
                     <label class="form-label">Oder neues Bild hochladen</label>
-                    <input type="file" name="image_upload" class="form-control" accept="image/*">
+                    <input type="file" name="image_upload" class="form-control" accept="image/*" {% if catalog_read_only %}disabled{% endif %}>
                 </div>
                 <div class="mb-3">
                     <div class="form-check">
-                        <input class="form-check-input" type="checkbox" name="is_standard" id="modal_is_standard">
+                        <input class="form-check-input" type="checkbox" name="is_standard" id="modal_is_standard" {% if catalog_read_only %}disabled{% endif %}>
                         <label class="form-check-label" for="modal_is_standard">
                             <strong>Als Standard markieren</strong>
                         </label>
@@ -299,38 +315,10 @@
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Abbrechen</button>
-                <button type="submit" class="btn btn-primary"><i class="bi bi-plus-lg me-1"></i>Erstellen</button>
+                <button type="submit" class="btn btn-primary" {% if catalog_read_only %}disabled{% endif %}><i class="bi bi-plus-lg me-1"></i>Erstellen</button>
             </div>
         </form>
     </div>
 </div>
 </div>
-{% endblock %}
-
-{% block scripts %}
-<script>
-(function() {
-    const readOnly = {{ 'true' if catalog_read_only else 'false' }};
-    if (!readOnly) {
-        return;
-    }
-    const root = document.getElementById('vehiclesPageRoot');
-    if (!root) {
-        return;
-    }
-    root.classList.add('catalog-readonly');
-    root.querySelectorAll('form').forEach(function(form) {
-        form.classList.add('catalog-readonly');
-    });
-    root.querySelectorAll('input, select, textarea').forEach(function(el) {
-        el.disabled = true;
-    });
-    root.querySelectorAll('button').forEach(function(btn) {
-        if (btn.classList.contains('accordion-button')) {
-            return;
-        }
-        btn.disabled = true;
-    });
-})();
-</script>
 {% endblock %}

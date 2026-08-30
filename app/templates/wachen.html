@@ -39,11 +39,11 @@
             <form method="post" action="/wachen/{{ wt.id }}/edit" enctype="multipart/form-data" class="row g-2 mb-4 align-items-end" data-async-wachen="1" data-keep-open-wid="{{ wt.id }}">
                     <div class="col-md-3">
                         <label class="form-label">Name</label>
-                        <input type="text" name="name" class="form-control" value="{{ wt.name }}" required>
+                        <input type="text" name="name" class="form-control" value="{{ wt.name }}" required {% if catalog_read_only %}disabled{% endif %}>
                     </div>
                     <div class="col-md-3">
                         <label class="form-label">Vorhandenes Bild</label>
-                        <select name="existing_image" class="form-select">
+                        <select name="existing_image" class="form-select" {% if catalog_read_only %}disabled{% endif %}>
                             <option value="">— keins —</option>
                             {% for img in existing_images %}
                             <option value="{{ img }}" {% if wt.image == img %}selected{% endif %}>{{ img }}</option>
@@ -52,15 +52,19 @@
                     </div>
                     <div class="col-md-3">
                         <label class="form-label">Oder hochladen</label>
-                        <input type="file" name="image_upload" class="form-control" accept="image/*">
+                        <input type="file" name="image_upload" class="form-control" accept="image/*" {% if catalog_read_only %}disabled{% endif %}>
                     </div>
                     <div class="col-md-3 d-flex gap-1">
+                        {% if not catalog_read_only %}
                         <button type="submit" class="btn btn-sm btn-outline-primary"><i class="bi bi-check-lg"></i> Speichern</button>
                         <form method="post" action="/wachen/{{ wt.id }}/delete" class="d-inline" data-async-wachen="1" data-confirm-msg="Wachen-Typ &quot;{{ wt.name }}&quot; wirklich löschen?">
                             <button type="submit" class="btn btn-sm btn-outline-danger">
                                 <i class="bi bi-trash"></i>
                             </button>
                         </form>
+                        {% else %}
+                        <span class="text-muted small">Read-Only</span>
+                        {% endif %}
                     </div>
                 </form>
 
@@ -78,23 +82,27 @@
                             <td>{{ lvl.level_number }}</td>
                             <td>
                                 <input type="hidden" name="level_ids" value="{{ lvl.id }}" form="levelsBulkForm-{{ wt.id }}">
-                                <input type="text" name="level_name_{{ lvl.id }}" class="form-control form-control-sm" value="{{ lvl.name or '' }}" placeholder="(optional)" form="levelsBulkForm-{{ wt.id }}">
+                                <input type="text" name="level_name_{{ lvl.id }}" class="form-control form-control-sm" value="{{ lvl.name or '' }}" placeholder="(optional)" form="levelsBulkForm-{{ wt.id }}" {% if catalog_read_only %}disabled{% endif %}>
                             </td>
                             <td>
-                                <input type="number" step="0.01" name="level_cost_{{ lvl.id }}" class="form-control form-control-sm" value="{{ lvl.cost }}" form="levelsBulkForm-{{ wt.id }}">
+                                <input type="number" step="0.01" name="level_cost_{{ lvl.id }}" class="form-control form-control-sm" value="{{ lvl.cost }}" form="levelsBulkForm-{{ wt.id }}" {% if catalog_read_only %}disabled{% endif %}>
                             </td>
                             <td>
-                                <input type="number" step="0.01" name="level_maintenance_cost_{{ lvl.id }}" class="form-control form-control-sm" value="{{ lvl.maintenance_cost }}" form="levelsBulkForm-{{ wt.id }}">
+                                <input type="number" step="0.01" name="level_maintenance_cost_{{ lvl.id }}" class="form-control form-control-sm" value="{{ lvl.maintenance_cost }}" form="levelsBulkForm-{{ wt.id }}" {% if catalog_read_only %}disabled{% endif %}>
                             </td>
                             <td>
-                                <input type="number" name="level_max_vehicles_{{ lvl.id }}" class="form-control form-control-sm" value="{{ lvl.max_vehicles }}" min="0" form="levelsBulkForm-{{ wt.id }}">
+                                <input type="number" name="level_max_vehicles_{{ lvl.id }}" class="form-control form-control-sm" value="{{ lvl.max_vehicles }}" min="0" form="levelsBulkForm-{{ wt.id }}" {% if catalog_read_only %}disabled{% endif %}>
                             </td>
                             <td>
+                                {% if not catalog_read_only %}
                                 <form method="post" action="/wachen/levels/{{ lvl.id }}/delete" class="d-inline" data-async-wachen="1" data-keep-open-wid="{{ wt.id }}" data-confirm-msg="Stufe {{ lvl.level_number }} löschen?">
                                     <button type="submit" class="btn btn-sm btn-outline-danger">
                                         <i class="bi bi-trash"></i>
                                     </button>
                                 </form>
+                                {% else %}
+                                <span class="text-muted small">Read-Only</span>
+                                {% endif %}
                             </td>
                         </tr>
                         {% endfor %}
@@ -107,7 +115,11 @@
                             <td class="text-muted small">pro aktiver Stufe</td>
                             <td></td>
                             <td class="text-end">
+                                {% if not catalog_read_only %}
                                 <button type="submit" form="levelsBulkForm-{{ wt.id }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-check2-all me-1"></i>Alle Stufen speichern</button>
+                                {% else %}
+                                <span class="text-muted small">Read-Only</span>
+                                {% endif %}
                             </td>
                         </tr>
                     </tfoot>
@@ -119,19 +131,23 @@
                 <!-- Add level -->
                 <form method="post" action="/wachen/{{ wt.id }}/levels/add" class="row g-2 align-items-end" data-async-wachen="1" data-keep-open-wid="{{ wt.id }}">
                     <div class="col-auto">
-                        <input type="text" name="level_name" class="form-control form-control-sm" placeholder="Bezeichnung (optional)">
+                        <input type="text" name="level_name" class="form-control form-control-sm" placeholder="Bezeichnung (optional)" {% if catalog_read_only %}disabled{% endif %}>
                     </div>
                     <div class="col-auto">
-                        <input type="number" step="0.01" name="level_cost" class="form-control form-control-sm" placeholder="Kosten (€)" value="0">
+                        <input type="number" step="0.01" name="level_cost" class="form-control form-control-sm" placeholder="Kosten (€)" value="0" {% if catalog_read_only %}disabled{% endif %}>
                     </div>
                     <div class="col-auto">
-                        <input type="number" step="0.01" name="level_maintenance_cost" class="form-control form-control-sm" placeholder="Unterhalt (€)" value="0">
+                        <input type="number" step="0.01" name="level_maintenance_cost" class="form-control form-control-sm" placeholder="Unterhalt (€)" value="0" {% if catalog_read_only %}disabled{% endif %}>
                     </div>
                     <div class="col-auto">
-                        <input type="number" name="level_max_vehicles" class="form-control form-control-sm" placeholder="Max. Fahrzeuge" value="0" min="0">
+                        <input type="number" name="level_max_vehicles" class="form-control form-control-sm" placeholder="Max. Fahrzeuge" value="0" min="0" {% if catalog_read_only %}disabled{% endif %}>
                     </div>
                     <div class="col-auto">
+                        {% if not catalog_read_only %}
                         <button type="submit" class="btn btn-sm btn-success"><i class="bi bi-plus-lg me-1"></i>Stufe hinzufügen</button>
+                        {% else %}
+                        <span class="text-muted small">Read-Only</span>
+                        {% endif %}
                     </div>
                 </form>
 
@@ -148,23 +164,27 @@
                         <tr>
                             <td>
                                 <input type="hidden" name="upgrade_ids" value="{{ upg.id }}" form="upgradesBulkForm-{{ wt.id }}">
-                                <input type="text" name="upgrade_name_{{ upg.id }}" class="form-control form-control-sm" value="{{ upg.name }}" required form="upgradesBulkForm-{{ wt.id }}">
+                                <input type="text" name="upgrade_name_{{ upg.id }}" class="form-control form-control-sm" value="{{ upg.name }}" required form="upgradesBulkForm-{{ wt.id }}" {% if catalog_read_only %}disabled{% endif %}>
                             </td>
                             <td>
-                                <input type="number" step="0.01" name="upgrade_cost_{{ upg.id }}" class="form-control form-control-sm" value="{{ upg.cost }}" form="upgradesBulkForm-{{ wt.id }}">
+                                <input type="number" step="0.01" name="upgrade_cost_{{ upg.id }}" class="form-control form-control-sm" value="{{ upg.cost }}" form="upgradesBulkForm-{{ wt.id }}" {% if catalog_read_only %}disabled{% endif %}>
                             </td>
                             <td>
-                                <input type="number" step="0.01" name="upgrade_maintenance_cost_{{ upg.id }}" class="form-control form-control-sm" value="{{ upg.maintenance_cost }}" form="upgradesBulkForm-{{ wt.id }}">
+                                <input type="number" step="0.01" name="upgrade_maintenance_cost_{{ upg.id }}" class="form-control form-control-sm" value="{{ upg.maintenance_cost }}" form="upgradesBulkForm-{{ wt.id }}" {% if catalog_read_only %}disabled{% endif %}>
                             </td>
                             <td>
-                                <input type="number" name="upgrade_extra_slots_{{ upg.id }}" class="form-control form-control-sm" value="{{ upg.extra_slots }}" min="0" form="upgradesBulkForm-{{ wt.id }}">
+                                <input type="number" name="upgrade_extra_slots_{{ upg.id }}" class="form-control form-control-sm" value="{{ upg.extra_slots }}" min="0" form="upgradesBulkForm-{{ wt.id }}" {% if catalog_read_only %}disabled{% endif %}>
                             </td>
                             <td>
+                                {% if not catalog_read_only %}
                                 <form method="post" action="/wachen/upgrades/{{ upg.id }}/delete" class="d-inline" data-async-wachen="1" data-keep-open-wid="{{ wt.id }}" data-confirm-msg="Erweiterung &quot;{{ upg.name }}&quot; löschen?">
                                     <button type="submit" class="btn btn-sm btn-outline-danger">
                                         <i class="bi bi-trash"></i>
                                     </button>
                                 </form>
+                                {% else %}
+                                <span class="text-muted small">Read-Only</span>
+                                {% endif %}
                             </td>
                         </tr>
                         {% endfor %}
@@ -176,7 +196,11 @@
                             <td>{{ '{:,.0f}'.format(wt.upgrades|sum(attribute='maintenance_cost')).replace(',', '.') }} €</td>
                             <td></td>
                             <td class="text-end">
+                                {% if not catalog_read_only %}
                                 <button type="submit" form="upgradesBulkForm-{{ wt.id }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-check2-all me-1"></i>Alle Erweiterungen speichern</button>
+                                {% else %}
+                                <span class="text-muted small">Read-Only</span>
+                                {% endif %}
                             </td>
                         </tr>
                     </tfoot>
@@ -188,19 +212,23 @@
                 <!-- Add upgrade -->
                 <form method="post" action="/wachen/{{ wt.id }}/upgrades/add" class="row g-2 align-items-end" data-async-wachen="1" data-keep-open-wid="{{ wt.id }}">
                     <div class="col-auto">
-                        <input type="text" name="upgrade_name" class="form-control form-control-sm" placeholder="Name" required>
+                        <input type="text" name="upgrade_name" class="form-control form-control-sm" placeholder="Name" required {% if catalog_read_only %}disabled{% endif %}>
                     </div>
                     <div class="col-auto">
-                        <input type="number" step="0.01" name="upgrade_cost" class="form-control form-control-sm" placeholder="Kosten (€)" value="0">
+                        <input type="number" step="0.01" name="upgrade_cost" class="form-control form-control-sm" placeholder="Kosten (€)" value="0" {% if catalog_read_only %}disabled{% endif %}>
                     </div>
                     <div class="col-auto">
-                        <input type="number" step="0.01" name="upgrade_maintenance_cost" class="form-control form-control-sm" placeholder="Unterhalt (€)" value="0">
+                        <input type="number" step="0.01" name="upgrade_maintenance_cost" class="form-control form-control-sm" placeholder="Unterhalt (€)" value="0" {% if catalog_read_only %}disabled{% endif %}>
                     </div>
                     <div class="col-auto">
-                        <input type="number" name="upgrade_extra_slots" class="form-control form-control-sm" placeholder="Zusätzl. Stellplätze" value="0" min="0">
+                        <input type="number" name="upgrade_extra_slots" class="form-control form-control-sm" placeholder="Zusätzl. Stellplätze" value="0" min="0" {% if catalog_read_only %}disabled{% endif %}>
                     </div>
                     <div class="col-auto">
+                        {% if not catalog_read_only %}
                         <button type="submit" class="btn btn-sm btn-success"><i class="bi bi-plus-lg me-1"></i>Erweiterung hinzufügen</button>
+                        {% else %}
+                        <span class="text-muted small">Read-Only</span>
+                        {% endif %}
                     </div>
                 </form>
             </div>
@@ -223,11 +251,11 @@
             <div class="modal-body">
                 <div class="mb-3">
                     <label class="form-label">Name</label>
-                    <input type="text" name="name" class="form-control" required autofocus>
+                    <input type="text" name="name" class="form-control" required autofocus {% if catalog_read_only %}disabled{% endif %}>
                 </div>
                 <div class="mb-3">
                     <label class="form-label">Vorhandenes Bild wählen</label>
-                    <select name="existing_image" class="form-select">
+                    <select name="existing_image" class="form-select" {% if catalog_read_only %}disabled{% endif %}>
                         <option value="">— keins —</option>
                         {% for img in existing_images %}
                         <option value="{{ img }}">{{ img }}</option>
@@ -236,12 +264,12 @@
                 </div>
                 <div class="mb-3">
                     <label class="form-label">Oder neues Bild hochladen</label>
-                    <input type="file" name="image_upload" class="form-control" accept="image/*">
+                    <input type="file" name="image_upload" class="form-control" accept="image/*" {% if catalog_read_only %}disabled{% endif %}>
                 </div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Abbrechen</button>
-                <button type="submit" class="btn btn-primary"><i class="bi bi-plus-lg me-1"></i>Erstellen</button>
+                <button type="submit" class="btn btn-primary" {% if catalog_read_only %}disabled{% endif %}><i class="bi bi-plus-lg me-1"></i>Erstellen</button>
             </div>
         </form>
     </div>
@@ -252,7 +280,6 @@
 {% block scripts %}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    const readOnlyCatalog = {{ 'true' if catalog_read_only else 'false' }};
     const rootSelector = '#wachenPageRoot';
     const flashSelector = '#flashMessages';
     const openStateKey = 'wachen-open-sections';
@@ -306,29 +333,6 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    function enforceCatalogReadOnly(scope) {
-        if (!readOnlyCatalog) {
-            return;
-        }
-        const root = scope || document.querySelector(rootSelector);
-        if (!root) {
-            return;
-        }
-        root.classList.add('catalog-readonly');
-        root.querySelectorAll('form').forEach(function(form) {
-            form.classList.add('catalog-readonly');
-        });
-        root.querySelectorAll('input, select, textarea').forEach(function(el) {
-            el.disabled = true;
-        });
-        root.querySelectorAll('button').forEach(function(btn) {
-            if (btn.classList.contains('accordion-button')) {
-                return;
-            }
-            btn.disabled = true;
-        });
-    }
-
     function replaceFromResponse(html, openIds) {
         const parser = new DOMParser();
         const nextDoc = parser.parseFromString(html, 'text/html');
@@ -348,12 +352,10 @@ document.addEventListener('DOMContentLoaded', function() {
         currentRoot.innerHTML = nextRoot.innerHTML;
         bindAccordionTracking(currentRoot);
         applyOpenIds(openIds, currentRoot);
-        enforceCatalogReadOnly(currentRoot);
         writeOpenState(openIds);
     }
 
     bindAccordionTracking(document);
-    enforceCatalogReadOnly(document);
     const savedIds = readOpenState();
     if (savedIds.length) {
         applyOpenIds(savedIds, document);
