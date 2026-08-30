@@ -413,7 +413,7 @@ def _migrate_standards_if_needed(database):
             cols = [c['name'] for c in inspector.get_columns('naming_org_type')]
             if 'no_location' not in cols:
                 conn.execute(sqlalchemy.text(
-                    'ALTER TABLE naming_org_type ADD COLUMN no_location BOOLEAN NOT NULL DEFAULT 0'
+                    'ALTER TABLE naming_org_type ADD COLUMN no_location BOOLEAN NOT NULL DEFAULT FALSE'
                 ))
 
         if 'my_wache' in inspector.get_table_names():
@@ -504,7 +504,7 @@ def _migrate_auth_and_savegames_if_needed(database):
                 'CREATE TABLE savegame ('
                 'id INTEGER PRIMARY KEY, '
                 'name VARCHAR(120) NOT NULL, '
-                'is_admin BOOLEAN NOT NULL DEFAULT 0, '
+                'is_admin BOOLEAN NOT NULL DEFAULT FALSE, '
                 'created_by_user_id INTEGER REFERENCES "user"(id), '
                 'created_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL)'
             ))
@@ -515,7 +515,7 @@ def _migrate_auth_and_savegames_if_needed(database):
                 'id INTEGER PRIMARY KEY, '
                 'savegame_id INTEGER NOT NULL REFERENCES savegame(id), '
                 'user_id INTEGER NOT NULL REFERENCES "user"(id), '
-                'role VARCHAR(20) NOT NULL DEFAULT "editor", '
+                "role VARCHAR(20) NOT NULL DEFAULT 'editor', "
                 'CONSTRAINT uq_savegame_user UNIQUE (savegame_id, user_id))'
             ))
 
@@ -559,5 +559,5 @@ def _migrate_admin_savegame_flag_if_needed(database):
     with engine.begin() as conn:
         if 'is_admin' not in columns:
             conn.execute(sqlalchemy.text(
-                'ALTER TABLE savegame ADD COLUMN is_admin BOOLEAN NOT NULL DEFAULT 0'
+                'ALTER TABLE savegame ADD COLUMN is_admin BOOLEAN NOT NULL DEFAULT FALSE'
             ))
