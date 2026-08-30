@@ -2,6 +2,7 @@ from urllib.parse import urlparse
 
 from flask import Blueprint, flash, redirect, render_template, request, session, url_for
 from flask_login import current_user, login_required, login_user, logout_user
+from sqlalchemy.exc import OperationalError
 
 from app import db
 from app.models import Savegame, SavegameMembership, User
@@ -29,6 +30,16 @@ def _current_owner_membership(savegame_id):
     ).first()
 
 
+def _run_with_retry(action):
+    for attempt in range(2):
+        try:
+            return action()
+        except OperationalError:
+            db.session.rollback()
+            if attempt == 1:
+                raise
+
+
 @auth_bp.route('/auth/login', methods=['GET', 'POST'])
 def login():
     if current_user.is_authenticated:
@@ -38,20 +49,26 @@ def login():
         username = request.form.get('username', '').strip()
         password = request.form.get('password', '')
 
-        user = User.query.filter_by(username=username).first()
+        try:
+            user = _run_with_retry(lambda: User.query.filter_by(username=username).first())
+        except OperationalError:
+            flash('Datenbankverbindung instabil. Bitte gleich nochmal versuchen.', 'danger')
+            return render_template('auth_login.html', show_register=True)
         if not user or not user.check_password(password):
             flash('Ungültiger Benutzername oder Passwort.', 'danger')
             return render_template('auth_login.html', show_register=(User.query.count() == 0))
 
         login_user(user)
-        first_membership = SavegameMembership.query.filter_by(user_id=user.id).order_by(SavegameMembership.id).first()
+        first_membership = _run_with_retry(
+            lambda: SavegameMembership.query.filter_by(user_id=user.id).order_by(SavegameMembership.id).first()
+        )
         if first_membership:
             session['active_savegame_id'] = first_membership.savegame_id
 
         next_url = _safe_next_url(request.args.get('next')) or url_for('vehicles.index')
         return redirect(next_url)
 
-    return render_template('auth_login.html', show_register=(User.query.count() == 0))
+    return render_template('auth_login.html', show_register=_run_with_retry(lambda: User.query.count() == 0))
 
 
 @auth_bp.route('/auth/register', methods=['GET', 'POST'])
@@ -70,24 +87,39 @@ def register():
         if password != password2:
             flash('Passwörter stimmen nicht überein.', 'danger')
             return render_template('auth_register.html')
-        if User.query.filter_by(username=username).first():
+        try:
+            existing_user = _run_with_retry(lambda: User.query.filter_by(username=username).first())
+        except OperationalError:
+            flash('Datenbankverbindung instabil. Bitte gleich nochmal versuchen.', 'danger')
+            return render_template('auth_register.html')
+
+        if existing_user:
             flash('Benutzername ist bereits vergeben.', 'danger')
             return render_template('auth_register.html')
 
-        user = User(username=username)
-        user.set_password(password)
-        db.session.add(user)
-        db.session.flush()
+        def _create_user_bundle():
+            user = User(username=username)
+            user.set_password(password)
+            db.session.add(user)
+            db.session.flush()
 
-        savegame = Savegame(name=f'{username} Spielstand', created_by_user_id=user.id)
-        db.session.add(savegame)
-        db.session.flush()
+            savegame = Savegame(name=f'{username} Spielstand', created_by_user_id=user.id)
+            db.session.add(savegame)
+            db.session.flush()
 
-        db.session.add(SavegameMembership(user_id=user.id, savegame_id=savegame.id, role='owner'))
-        db.session.commit()
+            db.session.add(SavegameMembership(user_id=user.id, savegame_id=savegame.id, role='owner'))
+            db.session.commit()
+            return user.id, savegame.id
+
+        try:
+            user_id, savegame_id = _run_with_retry(_create_user_bundle)
+            user = _run_with_retry(lambda: User.query.get(user_id))
+        except OperationalError:
+            flash('Datenbankverbindung instabil. Bitte gleich nochmal versuchen.', 'danger')
+            return render_template('auth_register.html')
 
         login_user(user)
-        session['active_savegame_id'] = savegame.id
+        session['active_savegame_id'] = savegame_id
         flash('Benutzerkonto erstellt.', 'success')
         return redirect(url_for('vehicles.index'))
 

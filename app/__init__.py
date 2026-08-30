@@ -37,6 +37,20 @@ def create_app():
         database_url = database_url.replace('postgresql://', 'postgresql+psycopg://', 1)
 
     app.config['SQLALCHEMY_DATABASE_URI'] = database_url
+    engine_options = {
+        'pool_pre_ping': True,
+        'pool_recycle': int(os.environ.get('DB_POOL_RECYCLE', '180')),
+    }
+    if database_url.startswith('postgresql'):
+        connect_args = {}
+        ssl_mode = os.environ.get('PGSSLMODE')
+        if ssl_mode:
+            connect_args['sslmode'] = ssl_mode
+        elif os.environ.get('RENDER'):
+            connect_args['sslmode'] = 'require'
+        if connect_args:
+            engine_options['connect_args'] = connect_args
+    app.config['SQLALCHEMY_ENGINE_OPTIONS'] = engine_options
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
     app.config['SESSION_COOKIE_HTTPONLY'] = True
