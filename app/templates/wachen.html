@@ -310,11 +310,22 @@ document.addEventListener('DOMContentLoaded', function() {
         if (!readOnlyCatalog) {
             return;
         }
-        (scope || document).querySelectorAll(rootSelector + ' form').forEach(function(form) {
+        const root = scope || document.querySelector(rootSelector);
+        if (!root) {
+            return;
+        }
+        root.classList.add('catalog-readonly');
+        root.querySelectorAll('form').forEach(function(form) {
             form.classList.add('catalog-readonly');
-            form.querySelectorAll('input, select, textarea, button').forEach(function(el) {
-                el.disabled = true;
-            });
+        });
+        root.querySelectorAll('input, select, textarea').forEach(function(el) {
+            el.disabled = true;
+        });
+        root.querySelectorAll('button').forEach(function(btn) {
+            if (btn.classList.contains('accordion-button')) {
+                return;
+            }
+            btn.disabled = true;
         });
     }
 
