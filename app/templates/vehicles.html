@@ -1,12 +1,19 @@
 {% extends "base.html" %}
 {% block content %}
+{% set catalog_read_only = not current_savegame_is_admin %}
 <div id="vehiclesPageRoot" data-async-root="1">
 <div class="d-flex justify-content-between align-items-center mb-3">
     <h2><i class="bi bi-truck me-2"></i>Fahrzeugtypen</h2>
-    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addTypeModal">
+    <button class="btn btn-primary" {% if catalog_read_only %}disabled title="Nur im Admin-Spielstand editierbar"{% else %}data-bs-toggle="modal" data-bs-target="#addTypeModal"{% endif %}>
         <i class="bi bi-plus-lg me-1"></i>Neuer Fahrzeugtyp
     </button>
 </div>
+
+{% if catalog_read_only %}
+<div class="alert alert-warning py-2">
+    Fahrzeugtypen sind global und in diesem Spielstand nur lesbar. Bearbeiten ist nur im Admin-Spielstand möglich.
+</div>
+{% endif %}
 
 {% if vehicle_types %}
 {% set standards = vehicle_types | selectattr('is_standard') | list %}
@@ -298,4 +305,21 @@
     </div>
 </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+    const readOnly = {{ 'true' if catalog_read_only else 'false' }};
+    if (!readOnly) {
+        return;
+    }
+    document.querySelectorAll('#vehiclesPageRoot form').forEach(function(form) {
+        form.classList.add('catalog-readonly');
+        form.querySelectorAll('input, select, textarea, button').forEach(function(el) {
+            el.disabled = true;
+        });
+    });
+})();
+</script>
 {% endblock %}
