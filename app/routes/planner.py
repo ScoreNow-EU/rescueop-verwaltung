@@ -5,7 +5,7 @@ from app import db
 from app.access import assign_active_savegame, scoped, scoped_get_or_404
 from app.models import (VehicleType, VehicleModule, WacheType, WacheLevel,
                         MyWache, MyVehicle, PlanItem, WacheUpgrade,
-                        NamingOrgType, NamingLocation)
+                        NamingOrgType, NamingLocation, NamingPreset)
 import re
 
 planner_bp = Blueprint('planner', __name__)
@@ -116,6 +116,7 @@ def index():
     all_modules = scoped(VehicleModule).order_by(VehicleModule.name).all()
     org_types = scoped(NamingOrgType).order_by(NamingOrgType.abbreviation).all()
     locations = scoped(NamingLocation).order_by(NamingLocation.abbreviation).all()
+    naming_presets = scoped(NamingPreset).order_by(NamingPreset.is_default.desc(), NamingPreset.name).all()
 
     # Used by planner naming helpers in the template script.
     wache_veh_counts = {}
@@ -308,6 +309,7 @@ def index():
                            all_modules=all_modules,
                            capacity_info=capacity_info,
                            org_types=org_types, locations=locations,
+                           naming_presets=naming_presets,
                            wache_veh_counts_json=wache_veh_counts,
                            org_wache_next_json=org_wache_next)
 

@@ -40,44 +40,186 @@
                 <i class="bi bi-eye me-1"></i>Vorschau Benennungsschema
             </div>
             <div class="card-body">
-                <p class="text-muted mb-3">
-                    Format: <code>ORGTYP-STANDORT-FAHRZEUGKÜRZEL&lt;NR&gt;</code> — z.B.
-                    <strong>FF-LIN-HLF3</strong> = Freiwillige Feuerwehr Linden, HLF, Nr. 3
-                </p>
+                <p class="text-muted mb-3">Die Vorschau nutzt die gleichen Tokens wie der Planer. So siehst du direkt, wie ein Preset später aussieht.</p>
+                <div class="row g-2 mb-2">
+                    <div class="col-lg-5">
+                        <label class="form-label">Preset</label>
+                        <select class="form-select form-select-sm" id="prev_preset">
+                            {% if naming_presets %}
+                            {% for p in naming_presets %}
+                            <option value="{{ p.template }}" {% if p.is_default %}selected{% endif %}>{{ p.name }}</option>
+                            {% endfor %}
+                            {% else %}
+                            <option value="{ORG}-{LOCATION}-{VEHICLE}{NUMBER2}" selected>Standard</option>
+                            {% endif %}
+                        </select>
+                    </div>
+                    <div class="col-lg-7">
+                        <label class="form-label">Template</label>
+                        <input type="text" class="form-control form-control-sm" id="prev_template" value="{{ (naming_presets | selectattr('is_default') | map(attribute='template') | list | first) or (naming_presets[0].template if naming_presets else '{ORG}-{LOCATION}-{VEHICLE}{NUMBER2}') }}">
+                    </div>
+                </div>
                 <div class="row g-2 align-items-end" id="previewRow">
-                    <div class="col-auto">
+                    <div class="col-md-2">
                         <label class="form-label">Org-Typ</label>
                         <select class="form-select form-select-sm" id="prev_org">
                             <option value="" data-no-location="0">—</option>
                             {% for o in org_types %}
-                            <option value="{{ o.abbreviation }}" data-no-location="{{ '1' if o.no_location else '0' }}">{{ o.abbreviation }}</option>
+                            <option value="{{ o.abbreviation }}" data-no-location="{{ '1' if o.no_location else '0' }}" data-full-name="{{ o.full_name }}">{{ o.abbreviation }}</option>
                             {% endfor %}
                         </select>
                     </div>
-                    <div class="col-auto">
+                    <div class="col-md-2">
                         <label class="form-label">Standort</label>
                         <select class="form-select form-select-sm" id="prev_loc">
                             <option value="">—</option>
                             {% for l in locations %}
-                            <option value="{{ l.abbreviation }}">{{ l.abbreviation }}</option>
+                            <option value="{{ l.abbreviation }}" data-full-name="{{ l.full_name }}">{{ l.abbreviation }}</option>
                             {% endfor %}
                         </select>
                     </div>
-                    <div class="col-auto">
+                    <div class="col-md-2">
                         <label class="form-label">Fahrzeug-Kürzel</label>
-                        <input type="text" class="form-control form-control-sm" id="prev_veh" placeholder="z.B. HLF" style="width:100px">
+                        <input type="text" class="form-control form-control-sm" id="prev_veh" placeholder="z.B. HLF">
                     </div>
-                    <div class="col-auto">
+                    <div class="col-md-1">
                         <label class="form-label">Nr.</label>
-                        <input type="number" class="form-control form-control-sm" id="prev_nr" min="1" placeholder="1" style="width:70px">
+                        <input type="number" class="form-control form-control-sm" id="prev_nr" min="1" placeholder="1">
                     </div>
-                    <div class="col-auto">
+                    <div class="col-md-2">
+                        <label class="form-label">Block 1</label>
+                        <input type="text" class="form-control form-control-sm" id="prev_block1" placeholder="71">
+                    </div>
+                    <div class="col-md-1">
+                        <label class="form-label">Block 2</label>
+                        <input type="text" class="form-control form-control-sm" id="prev_block2" placeholder="1">
+                    </div>
+                    <div class="col-md-1">
+                        <label class="form-label">Block 3</label>
+                        <input type="text" class="form-control form-control-sm" id="prev_block3" placeholder="X">
+                    </div>
+                    <div class="col-md-12">
                         <label class="form-label">Ergebnis</label>
                         <div class="input-group">
-                            <span class="form-control form-control-sm bg-light fw-bold text-primary" id="previewResult" style="min-width:160px">—</span>
+                            <span class="form-control form-control-sm bg-light fw-bold text-primary" id="previewResult">—</span>
                         </div>
                     </div>
                 </div>
+                <div class="form-text mt-2">
+                    Tokens: {ORG}, {ORG-SHORT}, {ORG_FULL}, {LOCATION}, {LOCATION-SHORT}, {LOCATION_FULL}, {VEHICLE}, {VEHICLE-SHORT}, {VEHICLE_NAME}, {NUMBER}, {NUMBER2}, {NUMBER3}, {NUMBER4}, {BLOCK1}, {BLOCK2}, {BLOCK3}, {MODULES}, {MODULE_CODES}, {MODULE_COUNT}, {WACHE}, {WACHE_TYPE}, {WACHE_LEVEL}, {YEAR}, {YEAR4}, {MONTH}, {DAY}
+                </div>
+            </div>
+        </div>
+
+        <div class="card mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-layout-text-window-reverse me-1"></i>Naming-Presets</span>
+                {% if current_savegame_is_admin %}
+                <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#addPresetModal">
+                    <i class="bi bi-plus-lg"></i>
+                </button>
+                {% else %}
+                <span class="badge bg-secondary">Nur Admin-Spielstand</span>
+                {% endif %}
+            </div>
+            <div class="card-body p-0">
+                {% if naming_presets %}
+                <table class="table table-sm table-hover mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Name</th>
+                            <th>Template</th>
+                            <th>Beschreibung</th>
+                            <th>Standard</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for p in naming_presets %}
+                        <tr>
+                            <td>{{ p.name }}</td>
+                            <td><code>{{ p.template }}</code></td>
+                            <td>{{ p.description or '—' }}</td>
+                            <td>
+                                {% if p.is_default %}
+                                <span class="badge bg-success">Ja</span>
+                                {% else %}
+                                <span class="text-muted">—</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-end">
+                                {% if current_savegame_is_admin %}
+                                <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#editPresetModal{{ p.id }}">
+                                    <i class="bi bi-pencil"></i>
+                                </button>
+                                <form method="post" action="/standards/presets/{{ p.id }}/delete" class="d-inline" data-async="1" data-confirm-msg="Preset &quot;{{ p.name }}&quot; wirklich löschen?">
+                                    <button type="submit" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+                                </form>
+                                {% endif %}
+                            </td>
+                        </tr>
+
+                        <div class="modal fade" id="editPresetModal{{ p.id }}" tabindex="-1">
+                            <div class="modal-dialog modal-lg">
+                                <form method="post" action="/standards/presets/{{ p.id }}/edit" data-async="1">
+                                    <div class="modal-content">
+                                        <div class="modal-header">
+                                            <h5 class="modal-title">Preset bearbeiten</h5>
+                                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                        </div>
+                                        <div class="modal-body row g-3">
+                                            <div class="col-md-4">
+                                                <label class="form-label">Name *</label>
+                                                <input type="text" name="name" class="form-control" required maxlength="120" value="{{ p.name }}">
+                                            </div>
+                                            <div class="col-md-8">
+                                                <label class="form-label">Template *</label>
+                                                <input type="text" name="template" class="form-control" required maxlength="255" value="{{ p.template }}">
+                                            </div>
+                                            <div class="col-12">
+                                                <label class="form-label">Beschreibung</label>
+                                                <input type="text" name="description" class="form-control" maxlength="255" value="{{ p.description or '' }}">
+                                            </div>
+                                            <div class="col-12">
+                                                <div class="form-check">
+                                                    <input class="form-check-input" type="checkbox" name="is_default" id="presetDefault{{ p.id }}" {% if p.is_default %}checked{% endif %}>
+                                                    <label class="form-check-label" for="presetDefault{{ p.id }}">Als Standard-Preset verwenden</label>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="modal-footer">
+                                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Abbrechen</button>
+                                            <button type="submit" class="btn btn-primary">Speichern</button>
+                                        </div>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% else %}
+                <p class="text-muted p-3 mb-0">Keine Presets vorhanden.</p>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="card mb-4">
+            <div class="card-header"><i class="bi bi-braces me-1"></i>Token-Katalog</div>
+            <div class="card-body p-0">
+                <table class="table table-sm mb-0">
+                    <thead class="table-light">
+                        <tr><th>Token</th><th>Bedeutung</th></tr>
+                    </thead>
+                    <tbody>
+                        {% for t in naming_tokens %}
+                        <tr>
+                            <td><code>{{ '{' ~ t.token ~ '}' }}</code></td>
+                            <td>{{ t.description }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
             </div>
         </div>
 
@@ -404,6 +546,44 @@
 
 </div>
 
+<!-- Add Preset Modal -->
+<div class="modal fade" id="addPresetModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <form method="post" action="/standards/presets/add" data-async="1">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-plus-lg me-1"></i>Neues Naming-Preset</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body row g-3">
+                    <div class="col-md-4">
+                        <label class="form-label">Name *</label>
+                        <input type="text" name="name" class="form-control" maxlength="120" required placeholder="z.B. Florian-Style">
+                    </div>
+                    <div class="col-md-8">
+                        <label class="form-label">Template *</label>
+                        <input type="text" name="template" class="form-control" maxlength="255" required placeholder="{ORG} {LOCATION}/{VEHICLE}/{NUMBER2}">
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label">Beschreibung</label>
+                        <input type="text" name="description" class="form-control" maxlength="255" placeholder="Optional">
+                    </div>
+                    <div class="col-12">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" value="on" id="addPresetDefault" name="is_default">
+                            <label class="form-check-label" for="addPresetDefault">Als Standard-Preset verwenden</label>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Abbrechen</button>
+                    <button type="submit" class="btn btn-primary">Hinzufügen</button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
 <!-- Import Backup Modal -->
 <div class="modal fade" id="importBackupModal" tabindex="-1">
     <div class="modal-dialog">
@@ -449,41 +629,111 @@
 {% block scripts %}
 <script>
 function initStandardsPreview() {
+    var prevPreset = document.getElementById('prev_preset');
+    var prevTemplate = document.getElementById('prev_template');
     var prevOrg = document.getElementById('prev_org');
     var prevLoc = document.getElementById('prev_loc');
     var prevVeh = document.getElementById('prev_veh');
     var prevNr = document.getElementById('prev_nr');
+    var prevBlock1 = document.getElementById('prev_block1');
+    var prevBlock2 = document.getElementById('prev_block2');
+    var prevBlock3 = document.getElementById('prev_block3');
     var previewResult = document.getElementById('previewResult');
-    if (!prevOrg || !prevLoc || !prevVeh || !prevNr || !previewResult) {
+    if (!prevOrg || !prevLoc || !prevVeh || !prevNr || !previewResult || !prevTemplate) {
         return;
     }
-    var locDiv = prevLoc.closest('.col-auto');
+    var locDiv = prevLoc.parentElement;
+
+    function padNumber(raw, width) {
+        var num = parseInt(raw || '0', 10);
+        if (!num || num < 0) {
+            return '';
+        }
+        return String(num).padStart(width, '0');
+    }
+
+    function compactToken(text) {
+        return (text || '').replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+    }
+
+    function shortToken(text) {
+        var parts = (text || '').match(/[A-Za-z0-9]+/g) || [];
+        if (parts.length > 1) {
+            return parts.map(function(part) { return part[0].toUpperCase(); }).join('');
+        }
+        return compactToken(text);
+    }
 
     function updatePreview() {
-        var orgSel  = prevOrg;
-        var locSel  = prevLoc;
-        var org     = orgSel.value;
-        var noLoc   = orgSel.options[orgSel.selectedIndex].dataset.noLocation === '1';
-        var loc     = locSel.value;
-        var veh     = prevVeh.value.trim().toUpperCase();
-        var nr      = prevNr.value.trim();
+        var orgSel = prevOrg;
+        var locSel = prevLoc;
+        var org = orgSel.value;
+        var orgFull = orgSel.options[orgSel.selectedIndex].dataset.fullName || '';
+        var noLoc = orgSel.options[orgSel.selectedIndex].dataset.noLocation === '1';
+        var loc = locSel.value;
+        var locFull = (locSel.options[locSel.selectedIndex] || {}).dataset ? (locSel.options[locSel.selectedIndex].dataset.fullName || '') : '';
+        var veh = prevVeh.value.trim().toUpperCase();
+        var nr = prevNr.value.trim();
+        var block1 = prevBlock1 ? prevBlock1.value.trim() : '';
+        var block2 = prevBlock2 ? prevBlock2.value.trim() : '';
+        var block3 = prevBlock3 ? prevBlock3.value.trim() : '';
+        var now = new Date();
+        var tpl = prevTemplate.value.trim();
 
         // Show/hide location selector
         locDiv.style.opacity = noLoc ? '0.4' : '1';
         locSel.disabled = noLoc;
         if (noLoc) locSel.value = '';
 
-        var parts = [];
-        if (org) parts.push(org);
-        if (!noLoc && loc) parts.push(loc);
-        var last = veh;
-        if (nr) last += nr;
-        if (last) parts.push(last);
+        var tokens = {
+            ORG: org,
+            'ORG-SHORT': shortToken(org),
+            ORG_FULL: orgFull,
+            LOCATION: noLoc ? '' : loc,
+            'LOCATION-SHORT': noLoc ? '' : compactToken(loc),
+            LOCATION_FULL: noLoc ? '' : locFull,
+            VEHICLE: veh,
+            'VEHICLE-SHORT': compactToken(veh),
+            VEHICLE_NAME: veh,
+            NUMBER: nr,
+            NUMBER2: padNumber(nr, 2),
+            NUMBER3: padNumber(nr, 3),
+            NUMBER4: padNumber(nr, 4),
+            BLOCK1: block1,
+            BLOCK2: block2,
+            BLOCK3: block3,
+            MODULES: 'A/B',
+            MODULE_CODES: 'A-B',
+            MODULE_COUNT: '2',
+            WACHE: 'Musterwache',
+            WACHE_TYPE: 'Feuerwache',
+            WACHE_LEVEL: '1',
+            YEAR: String(now.getFullYear()).slice(-2),
+            YEAR4: String(now.getFullYear()),
+            MONTH: String(now.getMonth() + 1).padStart(2, '0'),
+            DAY: String(now.getDate()).padStart(2, '0')
+        };
 
-        previewResult.textContent = parts.length ? parts.join('-') : '—';
+        var result = tpl.replace(/\{([A-Z0-9_-]+)\}/g, function(match, key) {
+            return Object.prototype.hasOwnProperty.call(tokens, key) ? (tokens[key] || '') : match;
+        });
+        result = result.replace(/\s{2,}/g, ' ').trim();
+        result = result.replace(/\/\//g, '/').replace(/--/g, '-');
+        result = result.replace(/^[-/\s]+|[-/\s]+$/g, '');
+
+        previewResult.textContent = result || '—';
     }
 
-    [prevOrg, prevLoc, prevVeh, prevNr].forEach(function (el) {
+    if (prevPreset && prevTemplate && prevPreset.dataset.bound !== '1') {
+        prevPreset.dataset.bound = '1';
+        prevPreset.addEventListener('change', function() {
+            prevTemplate.value = prevPreset.value;
+            updatePreview();
+        });
+    }
+
+    [prevOrg, prevLoc, prevVeh, prevNr, prevBlock1, prevBlock2, prevBlock3, prevTemplate].forEach(function (el) {
+        if (!el) return;
         if (el.dataset.previewBound === '1') return;
         el.dataset.previewBound = '1';
         el.addEventListener('input', updatePreview);

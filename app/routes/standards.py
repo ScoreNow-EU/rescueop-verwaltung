@@ -17,6 +17,7 @@ from app.access import (
 from app.models import (
     NamingLocation,
     NamingOrgType,
+    NamingPreset,
     MyVehicle,
     MyWache,
     PlanItem,
@@ -33,6 +34,68 @@ from app.models import (
 )
 
 standards_bp = Blueprint('standards', __name__)
+
+NAMING_TOKEN_CATALOG = [
+    {'token': 'ORG', 'description': 'Org-Kürzel (z. B. Florian Leverkusen)'},
+    {'token': 'ORG-SHORT', 'description': 'Abgekürztes Org-Kürzel (z. B. FL)'},
+    {'token': 'ORG_FULL', 'description': 'Org-Langname falls bekannt'},
+    {'token': 'LOCATION', 'description': 'Standort-Kürzel (z. B. 08, LEH)'},
+    {'token': 'LOCATION-SHORT', 'description': 'Standort ohne Sonderzeichen'},
+    {'token': 'LOCATION_FULL', 'description': 'Standort-Langname falls bekannt'},
+    {'token': 'VEHICLE', 'description': 'Fahrzeugkürzel vom Typ (z. B. RTW)'},
+    {'token': 'VEHICLE-SHORT', 'description': 'Fahrzeugkürzel ohne Sonderzeichen'},
+    {'token': 'VEHICLE_NAME', 'description': 'Fahrzeugtyp-Name'},
+    {'token': 'NUMBER', 'description': 'Nummer unverändert'},
+    {'token': 'NUMBER2', 'description': 'Nummer zweistellig (01)'},
+    {'token': 'NUMBER3', 'description': 'Nummer dreistellig (001)'},
+    {'token': 'NUMBER4', 'description': 'Nummer vierstellig (0001)'},
+    {'token': 'BLOCK1', 'description': 'Freier Block 1 (z. B. 71)'},
+    {'token': 'BLOCK2', 'description': 'Freier Block 2 (z. B. 1)'},
+    {'token': 'BLOCK3', 'description': 'Freier Block 3'},
+    {'token': 'MODULES', 'description': 'Gewählte Module als Textliste'},
+    {'token': 'MODULE_CODES', 'description': 'Modulkürzel, bindestrichgetrennt'},
+    {'token': 'MODULE_COUNT', 'description': 'Anzahl gewählter Module'},
+    {'token': 'WACHE', 'description': 'Name der Zielwache'},
+    {'token': 'WACHE_TYPE', 'description': 'Typname der Zielwache'},
+    {'token': 'WACHE_LEVEL', 'description': 'Aktuelle Stufe der Zielwache'},
+    {'token': 'YEAR', 'description': 'Jahr zweistellig (26)'},
+    {'token': 'YEAR4', 'description': 'Jahr vierstellig (2026)'},
+    {'token': 'MONTH', 'description': 'Monat zweistellig'},
+    {'token': 'DAY', 'description': 'Tag zweistellig'},
+]
+
+DEFAULT_NAMING_PRESETS = [
+    {
+        'name': 'Florian-Style',
+        'template': '{ORG} {LOCATION}/{VEHICLE}/{NUMBER2}',
+        'description': 'Beispiel: Florian Leverkusen 08/RTW/01',
+        'is_default': True,
+    },
+    {
+        'name': 'Kurzformat',
+        'template': '{VEHICLE}/{NUMBER2}',
+        'description': 'Beispiel: NEF/01',
+        'is_default': False,
+    },
+    {
+        'name': 'Rotkreuz-Stil',
+        'template': '{ORG} {LOCATION} {BLOCK1}/{NUMBER}',
+        'description': 'Beispiel: Rotkreuz Lehel 71/1',
+        'is_default': False,
+    },
+    {
+        'name': 'Block/Typ',
+        'template': '{ORG} {BLOCK1}/{VEHICLE}/{NUMBER2}',
+        'description': 'Beispiel: Florian Leverkusen 12/GW-AS/01',
+        'is_default': False,
+    },
+    {
+        'name': 'Numerisch',
+        'template': '{BLOCK1}-{BLOCK2}-{NUMBER2}',
+        'description': 'Beispiel: 01-48-12',
+        'is_default': False,
+    },
+]
 
 
 def _database_path():
@@ -82,6 +145,7 @@ def _clear_savegame_runtime_data(savegame_id):
 def _clear_global_catalog(admin_savegame_id):
     db.session.execute(vehicle_type_modules.delete())
     db.session.execute(vehicle_type_standard_modules.delete())
+    NamingPreset.query.filter_by(savegame_id=admin_savegame_id).delete(synchronize_session=False)
     WacheLevel.query.filter_by(savegame_id=admin_savegame_id).delete(synchronize_session=False)
     WacheUpgrade.query.filter_by(savegame_id=admin_savegame_id).delete(synchronize_session=False)
     WacheType.query.filter_by(savegame_id=admin_savegame_id).delete(synchronize_session=False)
@@ -111,6 +175,7 @@ def _import_backup_into_active_savegame(sqlite_path, include_global):
             'wache_upgrade': _sqlite_fetch_rows(conn, 'wache_upgrade'),
             'naming_org_type': _sqlite_fetch_rows(conn, 'naming_org_type'),
             'naming_location': _sqlite_fetch_rows(conn, 'naming_location'),
+            'naming_preset': _sqlite_fetch_rows(conn, 'naming_preset'),
             'my_wache': _sqlite_fetch_rows(conn, 'my_wache'),
             'my_vehicle': _sqlite_fetch_rows(conn, 'my_vehicle'),
             'plan_item': _sqlite_fetch_rows(conn, 'plan_item'),
@@ -214,6 +279,16 @@ def _import_backup_into_active_savegame(sqlite_path, include_global):
                 vehicle_type_id=vtid,
                 vehicle_module_id=mid,
             ))
+
+        for row in source['naming_preset']:
+            preset = NamingPreset(
+                savegame_id=admin_savegame_id,
+                name=row.get('name') or '',
+                template=row.get('template') or '',
+                description=row.get('description'),
+                is_default=bool(row.get('is_default')),
+            )
+            db.session.add(preset)
     else:
         source_modules = {r.get('id'): (r.get('name') or '') for r in source['vehicle_module']}
         source_vehicle_types = {r.get('id'): (r.get('name') or '') for r in source['vehicle_type']}
@@ -395,9 +470,110 @@ def index():
     locations = scoped(NamingLocation).order_by(NamingLocation.abbreviation).all()
     vehicle_types = scoped(VehicleType).order_by(VehicleType.name).all()
     all_modules = scoped(VehicleModule).order_by(VehicleModule.name).all()
+    naming_presets = scoped(NamingPreset).order_by(NamingPreset.is_default.desc(), NamingPreset.name).all()
+    if not naming_presets and active_savegame_is_admin():
+        for preset in DEFAULT_NAMING_PRESETS:
+            obj = NamingPreset(
+                name=preset['name'],
+                template=preset['template'],
+                description=preset['description'],
+                is_default=preset['is_default'],
+            )
+            assign_active_savegame(obj)
+            db.session.add(obj)
+        db.session.commit()
+        naming_presets = scoped(NamingPreset).order_by(NamingPreset.is_default.desc(), NamingPreset.name).all()
+
     return render_template('standards.html', active_tab='standards',
                            org_types=org_types, locations=locations,
-                           vehicle_types=vehicle_types, all_modules=all_modules)
+                           vehicle_types=vehicle_types, all_modules=all_modules,
+                           naming_presets=naming_presets,
+                           naming_tokens=NAMING_TOKEN_CATALOG)
+
+
+@standards_bp.route('/standards/presets/add', methods=['POST'])
+def add_preset():
+    if not active_savegame_is_admin():
+        flash('Naming-Presets können nur im Admin-Spielstand gepflegt werden.', 'danger')
+        return redirect(url_for('standards.index'))
+
+    name = request.form.get('name', '').strip()
+    template = request.form.get('template', '').strip()
+    description = request.form.get('description', '').strip() or None
+    is_default = request.form.get('is_default') == 'on'
+
+    if not name or not template:
+        flash('Preset-Name und Template sind erforderlich.', 'danger')
+        return redirect(url_for('standards.index'))
+    if scoped(NamingPreset).filter_by(name=name).first():
+        flash(f'Preset "{name}" ist bereits vorhanden.', 'danger')
+        return redirect(url_for('standards.index'))
+
+    if is_default:
+        for item in scoped(NamingPreset).all():
+            item.is_default = False
+
+    preset = NamingPreset(name=name, template=template, description=description, is_default=is_default)
+    assign_active_savegame(preset)
+    db.session.add(preset)
+    db.session.commit()
+    flash('Naming-Preset erstellt.', 'success')
+    return redirect(url_for('standards.index'))
+
+
+@standards_bp.route('/standards/presets/<int:pid>/edit', methods=['POST'])
+def edit_preset(pid):
+    if not active_savegame_is_admin():
+        flash('Naming-Presets können nur im Admin-Spielstand gepflegt werden.', 'danger')
+        return redirect(url_for('standards.index'))
+
+    preset = scoped_get_or_404(NamingPreset, pid)
+    name = request.form.get('name', '').strip()
+    template = request.form.get('template', '').strip()
+    description = request.form.get('description', '').strip() or None
+    is_default = request.form.get('is_default') == 'on'
+
+    if not name or not template:
+        flash('Preset-Name und Template sind erforderlich.', 'danger')
+        return redirect(url_for('standards.index'))
+
+    existing = scoped(NamingPreset).filter_by(name=name).first()
+    if existing and existing.id != preset.id:
+        flash(f'Preset "{name}" ist bereits vorhanden.', 'danger')
+        return redirect(url_for('standards.index'))
+
+    if is_default:
+        for item in scoped(NamingPreset).all():
+            item.is_default = False
+
+    preset.name = name
+    preset.template = template
+    preset.description = description
+    preset.is_default = is_default
+    db.session.commit()
+    flash('Naming-Preset aktualisiert.', 'success')
+    return redirect(url_for('standards.index'))
+
+
+@standards_bp.route('/standards/presets/<int:pid>/delete', methods=['POST'])
+def delete_preset(pid):
+    if not active_savegame_is_admin():
+        flash('Naming-Presets können nur im Admin-Spielstand gepflegt werden.', 'danger')
+        return redirect(url_for('standards.index'))
+
+    preset = scoped_get_or_404(NamingPreset, pid)
+    was_default = preset.is_default
+    db.session.delete(preset)
+    db.session.flush()
+
+    if was_default:
+        fallback = scoped(NamingPreset).order_by(NamingPreset.id).first()
+        if fallback:
+            fallback.is_default = True
+
+    db.session.commit()
+    flash('Naming-Preset gelöscht.', 'success')
+    return redirect(url_for('standards.index'))
 
 
 # ---------- Org Types -------------------------------------------------------

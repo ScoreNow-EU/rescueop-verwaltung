@@ -196,6 +196,7 @@ def _bootstrap_auth_defaults():
     from app.models import (
         MyVehicle,
         MyWache,
+        NamingPreset,
         NamingLocation,
         NamingOrgType,
         PlanItem,
@@ -255,6 +256,7 @@ def _bootstrap_auth_defaults():
         WacheType,
         WacheLevel,
         WacheUpgrade,
+        NamingPreset,
     ]
 
     for model in scoped_models:
@@ -528,6 +530,7 @@ def _migrate_auth_and_savegames_if_needed(database):
         'wache_type',
         'wache_level',
         'wache_upgrade',
+        'naming_preset',
         'naming_org_type',
         'naming_location',
         'my_wache',

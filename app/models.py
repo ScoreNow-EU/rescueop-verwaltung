@@ -178,6 +178,21 @@ class NamingLocation(db.Model):
     )
 
 
+class NamingPreset(db.Model):
+    __tablename__ = 'naming_preset'
+
+    id = db.Column(db.Integer, primary_key=True)
+    savegame_id = db.Column(db.Integer, db.ForeignKey('savegame.id'), nullable=False, index=True)
+    name = db.Column(db.String(120), nullable=False)
+    template = db.Column(db.String(255), nullable=False)
+    description = db.Column(db.String(255), nullable=True)
+    is_default = db.Column(db.Boolean, nullable=False, default=False)
+
+    __table_args__ = (
+        db.UniqueConstraint('savegame_id', 'name', name='uq_naming_preset_name_per_savegame'),
+    )
+
+
 # ---------------------------------------------------------------------------
 # Fleet: My Wachen & Vehicles
 # ---------------------------------------------------------------------------

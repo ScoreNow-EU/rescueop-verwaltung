@@ -8,6 +8,7 @@ GLOBAL_CATALOG_MODELS = {
     'WacheType',
     'WacheLevel',
     'WacheUpgrade',
+    'NamingPreset',
 }
 
 

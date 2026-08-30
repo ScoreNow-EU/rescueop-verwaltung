@@ -416,13 +416,29 @@
                             {% for l in w.wache_type.levels if l.level_number == w.current_level %}
                             {% set lvl_obj.max = l.max_vehicles %}
                             {% endfor %}
-                            <option value="{{ w.ref }}" data-org="{{ w.org_type.abbreviation if w.org_type else '' }}" data-name="{{ w.name }}" data-loc="{{ w.location.abbreviation if w.location else '' }}" data-no-loc="{{ '1' if (w.org_type and w.org_type.no_location) else '0' }}">
+                            <option value="{{ w.ref }}"
+                                    data-org="{{ w.org_type.abbreviation if w.org_type else '' }}"
+                                    data-org-full="{{ w.org_type.full_name if w.org_type else '' }}"
+                                    data-name="{{ w.name }}"
+                                    data-loc="{{ w.location.abbreviation if w.location else '' }}"
+                                    data-loc-full="{{ w.location.full_name if w.location else '' }}"
+                                    data-no-loc="{{ '1' if (w.org_type and w.org_type.no_location) else '0' }}"
+                                    data-wache-type="{{ w.wache_type.name if w.wache_type else '' }}"
+                                    data-wache-level="{{ w.current_level }}">
                                 {{ w.name }} ({{ w.vehicles|length }}/{{ lvl_obj.max }} Fzg.){% if not w.org_type %} ⚠{% endif %}
                             </option>
                             {% endfor %}
                             <option disabled>— geplante Wachen —</option>
                             {% for w in planner_wachen if w.kind == 'planned' %}
-                            <option value="{{ w.ref }}" data-org="{{ w.name }}" data-name="{{ w.name }}" data-loc="" data-no-loc="1">
+                            <option value="{{ w.ref }}"
+                                    data-org="{{ w.name }}"
+                                    data-org-full="{{ w.name }}"
+                                    data-name="{{ w.name }}"
+                                    data-loc=""
+                                    data-loc-full=""
+                                    data-no-loc="1"
+                                    data-wache-type="{{ w.wache_type.name if w.wache_type else '' }}"
+                                    data-wache-level="1">
                                 {{ w.name }} (0/{{ w.max_vehicles }} Fzg., geplant)
                             </option>
                             {% endfor %}
@@ -443,18 +459,19 @@
                         <div class="col-md-5">
                             <label class="form-label small mb-1">Formatvorlage</label>
                             <select class="form-select form-select-sm" id="vehNamingPreset">
-                                <option value="{ORG}-{LOCATION}-{VEHICLE}{NUMBER}">Klassisch: ORG-ORT-HLF1</option>
-                                <option value="{ORG} {LOCATION}/{VEHICLE}/{NUMBER2}" selected>Florian-Style: ORG ORT/RTW/01</option>
-                                <option value="{VEHICLE}/{NUMBER2}">Kurz: NEF/01</option>
-                                <option value="{ORG} {LOCATION} {BLOCK1}/{NUMBER}">Rotkreuz-Style: ORG ORT 71/1</option>
-                                <option value="{ORG} {BLOCK1}/{VEHICLE}/{NUMBER2}">Leitstellenblock: ORG 12/GW-AS/01</option>
-                                <option value="{BLOCK1}-{BLOCK2}-{NUMBER2}">Numerisch: 01-48-12</option>
+                                {% if naming_presets %}
+                                {% for p in naming_presets %}
+                                <option value="{{ p.template }}" {% if p.is_default %}selected{% endif %}>{{ p.name }}{% if p.description %}: {{ p.description }}{% endif %}</option>
+                                {% endfor %}
+                                {% else %}
+                                <option value="{ORG} {LOCATION}/{VEHICLE}/{NUMBER2}" selected>Standard: ORG ORT/RTW/01</option>
+                                {% endif %}
                             </select>
                         </div>
                         <div class="col-md-7">
                             <label class="form-label small mb-1">Template (frei anpassbar)</label>
                             <input type="text" class="form-control form-control-sm" id="vehNamingTemplate"
-                                   value="{ORG} {LOCATION}/{VEHICLE}/{NUMBER2}">
+                                   value="{{ (naming_presets | selectattr('is_default') | map(attribute='template') | list | first) or (naming_presets[0].template if naming_presets else '{ORG} {LOCATION}/{VEHICLE}/{NUMBER2}') }}">
                         </div>
                     </div>
                     <div class="row g-2">
@@ -476,17 +493,21 @@
                         </div>
                     </div>
                     <div class="row g-2 mt-1">
-                        <div class="col-6">
+                        <div class="col-4">
                             <label class="form-label small mb-1">Block 1</label>
                             <input type="text" class="form-control form-control-sm" id="vehNamingBlock1" placeholder="z.B. 12 oder 71" maxlength="20">
                         </div>
-                        <div class="col-6">
+                        <div class="col-4">
                             <label class="form-label small mb-1">Block 2</label>
                             <input type="text" class="form-control form-control-sm" id="vehNamingBlock2" placeholder="z.B. 48" maxlength="20">
                         </div>
+                        <div class="col-4">
+                            <label class="form-label small mb-1">Block 3</label>
+                            <input type="text" class="form-control form-control-sm" id="vehNamingBlock3" placeholder="optional" maxlength="20">
+                        </div>
                     </div>
                     <div class="form-text mt-2">
-                        Tokens: {ORG}, {LOCATION}, {VEHICLE}, {NUMBER}, {NUMBER2}, {NUMBER3}, {BLOCK1}, {BLOCK2}, {MODULES}, {MODULE_CODES}
+                        Tokens: {ORG}, {ORG-SHORT}, {ORG_FULL}, {LOCATION}, {LOCATION-SHORT}, {LOCATION_FULL}, {VEHICLE}, {VEHICLE-SHORT}, {VEHICLE_NAME}, {NUMBER}, {NUMBER2}, {NUMBER3}, {NUMBER4}, {BLOCK1}, {BLOCK2}, {BLOCK3}, {MODULES}, {MODULE_CODES}, {MODULE_COUNT}, {WACHE}, {WACHE_TYPE}, {WACHE_LEVEL}, {YEAR}, {YEAR4}, {MONTH}, {DAY}
                     </div>
                     <div id="namingHints" class="mt-2"></div>
                     <div class="mt-2">
@@ -735,6 +756,7 @@ function initPlannerPage() {
     const vehNamingNr = document.getElementById('vehNamingNr');
     const vehNamingBlock1 = document.getElementById('vehNamingBlock1');
     const vehNamingBlock2 = document.getElementById('vehNamingBlock2');
+    const vehNamingBlock3 = document.getElementById('vehNamingBlock3');
     const vehNamingPreset = document.getElementById('vehNamingPreset');
     const vehNamingTemplate = document.getElementById('vehNamingTemplate');
     const namingPreview = document.getElementById('namingPreview');
@@ -765,6 +787,18 @@ function initPlannerPage() {
         return compact;
     }
 
+    function compactToken(text) {
+        return (text || '').replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+    }
+
+    function shortToken(text) {
+        const parts = (text || '').match(/[A-Za-z0-9]+/g) || [];
+        if (parts.length > 1) {
+            return parts.map(function(part) { return part[0].toUpperCase(); }).join('');
+        }
+        return compactToken(text);
+    }
+
     function selectedModuleNames() {
         return Array.from(document.querySelectorAll('.vehicle-mod-check:checked')).map(function(chk) {
             const label = document.querySelector('label[for="' + chk.id + '"]');
@@ -788,22 +822,48 @@ function initPlannerPage() {
         const nr = vehNamingNr ? vehNamingNr.value.trim() : '';
         const block1 = vehNamingBlock1 ? vehNamingBlock1.value.trim() : '';
         const block2 = vehNamingBlock2 ? vehNamingBlock2.value.trim() : '';
+        const block3 = vehNamingBlock3 ? vehNamingBlock3.value.trim() : '';
         const moduleNames = selectedModuleNames();
         const moduleCodes = moduleNames.map(moduleCode).filter(Boolean);
         const noLoc = vehNamingLocDiv && vehNamingLocDiv.style.display === 'none';
+        const tOpt = vehicleTypeSelect ? vehicleTypeSelect.options[vehicleTypeSelect.selectedIndex] : null;
+        const wOpt = vehicleWacheSelect ? vehicleWacheSelect.options[vehicleWacheSelect.selectedIndex] : null;
+        const now = new Date();
+        const orgFull = wOpt ? (wOpt.dataset.orgFull || '') : '';
+        const locFull = wOpt ? (wOpt.dataset.locFull || '') : '';
+        const wacheName = wOpt ? (wOpt.dataset.name || '') : '';
+        const wacheType = wOpt ? (wOpt.dataset.wacheType || '') : '';
+        const wacheLevel = wOpt ? (wOpt.dataset.wacheLevel || '') : '';
+        const vehicleName = tOpt ? tOpt.textContent.split('(')[0].trim() : '';
         const tokens = {
             ORG: org,
+            'ORG-SHORT': shortToken(org),
+            ORG_FULL: orgFull,
             LOCATION: noLoc ? '' : loc,
+            'LOCATION-SHORT': noLoc ? '' : compactToken(loc),
+            LOCATION_FULL: noLoc ? '' : locFull,
             VEHICLE: abbr,
+            'VEHICLE-SHORT': compactToken(abbr),
+            VEHICLE_NAME: vehicleName,
             NUMBER: nr,
             NUMBER2: padNumber(nr, 2),
             NUMBER3: padNumber(nr, 3),
+            NUMBER4: padNumber(nr, 4),
             BLOCK1: block1,
             BLOCK2: block2,
+            BLOCK3: block3,
             MODULES: moduleNames.join('/'),
             MODULE_CODES: moduleCodes.join('-'),
+            MODULE_COUNT: String(moduleNames.length),
+            WACHE: wacheName,
+            WACHE_TYPE: wacheType,
+            WACHE_LEVEL: String(wacheLevel || ''),
+            YEAR: String(now.getFullYear()).slice(-2),
+            YEAR4: String(now.getFullYear()),
+            MONTH: String(now.getMonth() + 1).padStart(2, '0'),
+            DAY: String(now.getDate()).padStart(2, '0'),
         };
-        let result = tpl.replace(/\{([A-Z0-9_]+)\}/g, function(match, key) {
+        let result = tpl.replace(/\{([A-Z0-9_-]+)\}/g, function(match, key) {
             return Object.prototype.hasOwnProperty.call(tokens, key) ? (tokens[key] || '') : match;
         });
         result = result.replace(/\s{2,}/g, ' ').trim();
@@ -928,6 +988,9 @@ function initPlannerPage() {
     [vehNamingOrg, vehNamingLoc, vehNamingAbbr, vehNamingNr, vehNamingBlock1, vehNamingBlock2].forEach(function(el) {
         if (el) el.addEventListener('input', updateNamingPreview);
     });
+    if (vehNamingBlock3) {
+        vehNamingBlock3.addEventListener('input', updateNamingPreview);
+    }
 
     const vehGenBtn = document.getElementById('vehGenBtn');
     if (vehGenBtn) {
