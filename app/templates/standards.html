@@ -42,6 +42,31 @@
             <div class="card-body">
                 <p class="text-muted mb-3">Die Vorschau nutzt die gleichen Tokens wie der Planer. So siehst du direkt, wie ein Preset später aussieht.</p>
                 <div class="row g-2 mb-2">
+                    <div class="col-lg-4">
+                        <label class="form-label">Beispiel-Wache (bestehend)</label>
+                        <select class="form-select form-select-sm" id="prev_wache">
+                            <option value="" data-org-short="" data-org-full="" data-loc-short="" data-loc-full="" data-no-location="0">- manuell -</option>
+                            {% for w in preview_wachen %}
+                            <option value="{{ w.id }}"
+                                    data-org-short="{{ w.org_type.abbreviation if w.org_type else '' }}"
+                                    data-org-full="{{ w.org_type.full_name if w.org_type else '' }}"
+                                    data-loc-short="{{ w.location.abbreviation if w.location else '' }}"
+                                    data-loc-full="{{ w.location.full_name if w.location else '' }}"
+                                    data-no-location="{{ '1' if (w.org_type and w.org_type.no_location) else '0' }}">
+                                {{ w.name }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-lg-3">
+                        <label class="form-label">Beispiel-Fahrzeugtyp</label>
+                        <select class="form-select form-select-sm" id="prev_vehicle_type">
+                            <option value="" data-veh-short="" data-veh-full="">- manuell -</option>
+                            {% for vt in vehicle_types %}
+                            <option value="{{ vt.id }}" data-veh-short="{{ vt.abbreviation or '' }}" data-veh-full="{{ vt.name }}">{{ vt.name }}{% if vt.abbreviation %} ({{ vt.abbreviation }}){% endif %}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
                     <div class="col-lg-5">
                         <label class="form-label">Preset</label>
                         <select class="form-select form-select-sm" id="prev_preset">
@@ -61,7 +86,7 @@
                 </div>
                 <div class="row g-2 align-items-end" id="previewRow">
                     <div class="col-md-2">
-                        <label class="form-label">Org-Typ</label>
+                        <label class="form-label">ORG (Lang)</label>
                         <select class="form-select form-select-sm" id="prev_org">
                             <option value="" data-no-location="0">—</option>
                             {% for o in org_types %}
@@ -70,7 +95,7 @@
                         </select>
                     </div>
                     <div class="col-md-2">
-                        <label class="form-label">Standort</label>
+                        <label class="form-label">LOCATION (Lang)</label>
                         <select class="form-select form-select-sm" id="prev_loc">
                             <option value="">—</option>
                             {% for l in locations %}
@@ -79,10 +104,22 @@
                         </select>
                     </div>
                     <div class="col-md-2">
-                        <label class="form-label">Fahrzeug-Kürzel</label>
-                        <input type="text" class="form-control form-control-sm" id="prev_veh" placeholder="z.B. HLF">
+                        <label class="form-label">VEHICLE (Lang)</label>
+                        <input type="text" class="form-control form-control-sm" id="prev_veh" placeholder="z.B. Hilfeleistungsloschgruppenfahrzeug">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">ORG-SHORT</label>
+                        <input type="text" class="form-control form-control-sm" id="prev_org_short" placeholder="z.B. BF">
                     </div>
                     <div class="col-md-1">
+                        <label class="form-label">LOC-SHORT</label>
+                        <input type="text" class="form-control form-control-sm" id="prev_loc_short" placeholder="HAN">
+                    </div>
+                    <div class="col-md-1">
+                        <label class="form-label">VEH-SHORT</label>
+                        <input type="text" class="form-control form-control-sm" id="prev_veh_short" placeholder="HLF">
+                    </div>
+                    <div class="col-md-2">
                         <label class="form-label">Nr.</label>
                         <input type="number" class="form-control form-control-sm" id="prev_nr" min="1" placeholder="1">
                     </div>
@@ -629,11 +666,16 @@
 {% block scripts %}
 <script>
 function initStandardsPreview() {
+    var prevWache = document.getElementById('prev_wache');
+    var prevVehicleType = document.getElementById('prev_vehicle_type');
     var prevPreset = document.getElementById('prev_preset');
     var prevTemplate = document.getElementById('prev_template');
     var prevOrg = document.getElementById('prev_org');
     var prevLoc = document.getElementById('prev_loc');
     var prevVeh = document.getElementById('prev_veh');
+    var prevOrgShort = document.getElementById('prev_org_short');
+    var prevLocShort = document.getElementById('prev_loc_short');
+    var prevVehShort = document.getElementById('prev_veh_short');
     var prevNr = document.getElementById('prev_nr');
     var prevBlock1 = document.getElementById('prev_block1');
     var prevBlock2 = document.getElementById('prev_block2');
@@ -664,15 +706,88 @@ function initStandardsPreview() {
         return compactToken(text);
     }
 
+    function findOptionByData(selectEl, key, value) {
+        if (!selectEl || !value) {
+            return null;
+        }
+        var normalized = String(value).trim().toLowerCase();
+        for (var i = 0; i < selectEl.options.length; i += 1) {
+            var option = selectEl.options[i];
+            var candidate = ((option.dataset && option.dataset[key]) || '').trim().toLowerCase();
+            if (candidate === normalized) {
+                return option;
+            }
+        }
+        return null;
+    }
+
+    function setSelectedByValue(selectEl, value) {
+        if (!selectEl) {
+            return;
+        }
+        for (var i = 0; i < selectEl.options.length; i += 1) {
+            if (selectEl.options[i].value === value) {
+                selectEl.selectedIndex = i;
+                return;
+            }
+        }
+    }
+
+    function syncFromStationSelection() {
+        if (!prevWache) {
+            return;
+        }
+        var option = prevWache.options[prevWache.selectedIndex];
+        if (!option || !option.value) {
+            return;
+        }
+        var orgShort = option.dataset.orgShort || '';
+        var orgFull = option.dataset.orgFull || '';
+        var locShort = option.dataset.locShort || '';
+        var locFull = option.dataset.locFull || '';
+
+        var orgOption = findOptionByData(prevOrg, 'fullName', orgFull);
+        if (!orgOption && prevOrg && orgShort) {
+            setSelectedByValue(prevOrg, orgShort);
+        }
+        if (orgOption) {
+            prevOrg.value = orgOption.value;
+        }
+        var locOption = findOptionByData(prevLoc, 'fullName', locFull);
+        if (locOption) {
+            prevLoc.value = locOption.value;
+        }
+
+        if (prevOrgShort) prevOrgShort.value = orgShort;
+        if (prevLocShort) prevLocShort.value = locShort;
+        if (prevOrg && orgFull) prevOrg.dataset.manualOrgFull = orgFull;
+        if (prevLoc && locFull) prevLoc.dataset.manualLocFull = locFull;
+    }
+
+    function syncFromVehicleTypeSelection() {
+        if (!prevVehicleType) {
+            return;
+        }
+        var option = prevVehicleType.options[prevVehicleType.selectedIndex];
+        if (!option || !option.value) {
+            return;
+        }
+        if (prevVeh) prevVeh.value = option.dataset.vehFull || '';
+        if (prevVehShort) prevVehShort.value = option.dataset.vehShort || '';
+    }
+
     function updatePreview() {
         var orgSel = prevOrg;
         var locSel = prevLoc;
-        var org = orgSel.value;
-        var orgFull = orgSel.options[orgSel.selectedIndex].dataset.fullName || '';
+        var orgShortFromSelect = orgSel.value;
+        var orgFull = orgSel.options[orgSel.selectedIndex].dataset.fullName || orgSel.dataset.manualOrgFull || '';
         var noLoc = orgSel.options[orgSel.selectedIndex].dataset.noLocation === '1';
-        var loc = locSel.value;
-        var locFull = (locSel.options[locSel.selectedIndex] || {}).dataset ? (locSel.options[locSel.selectedIndex].dataset.fullName || '') : '';
-        var veh = prevVeh.value.trim().toUpperCase();
+        var locShortFromSelect = locSel.value;
+        var locFull = (locSel.options[locSel.selectedIndex] || {}).dataset ? (locSel.options[locSel.selectedIndex].dataset.fullName || locSel.dataset.manualLocFull || '') : '';
+        var vehFull = prevVeh.value.trim();
+        var orgShort = prevOrgShort ? prevOrgShort.value.trim().toUpperCase() : orgShortFromSelect;
+        var locShort = prevLocShort ? prevLocShort.value.trim().toUpperCase() : locShortFromSelect;
+        var vehShort = prevVehShort ? prevVehShort.value.trim().toUpperCase() : shortToken(vehFull);
         var nr = prevNr.value.trim();
         var block1 = prevBlock1 ? prevBlock1.value.trim() : '';
         var block2 = prevBlock2 ? prevBlock2.value.trim() : '';
@@ -686,15 +801,15 @@ function initStandardsPreview() {
         if (noLoc) locSel.value = '';
 
         var tokens = {
-            ORG: org,
-            'ORG-SHORT': shortToken(org),
-            ORG_FULL: orgFull,
-            LOCATION: noLoc ? '' : loc,
-            'LOCATION-SHORT': noLoc ? '' : compactToken(loc),
-            LOCATION_FULL: noLoc ? '' : locFull,
-            VEHICLE: veh,
-            'VEHICLE-SHORT': compactToken(veh),
-            VEHICLE_NAME: veh,
+            ORG: orgFull || orgShort,
+            'ORG-SHORT': orgShort || shortToken(orgFull),
+            ORG_FULL: orgFull || orgShort,
+            LOCATION: noLoc ? '' : (locFull || locShort),
+            'LOCATION-SHORT': noLoc ? '' : (locShort || compactToken(locFull)),
+            LOCATION_FULL: noLoc ? '' : (locFull || locShort),
+            VEHICLE: vehFull || vehShort,
+            'VEHICLE-SHORT': vehShort || compactToken(vehFull),
+            VEHICLE_NAME: vehFull || vehShort,
             NUMBER: nr,
             NUMBER2: padNumber(nr, 2),
             NUMBER3: padNumber(nr, 3),
@@ -732,13 +847,36 @@ function initStandardsPreview() {
         });
     }
 
-    [prevOrg, prevLoc, prevVeh, prevNr, prevBlock1, prevBlock2, prevBlock3, prevTemplate].forEach(function (el) {
+    if (prevWache && prevWache.dataset.bound !== '1') {
+        prevWache.dataset.bound = '1';
+        prevWache.addEventListener('change', function() {
+            syncFromStationSelection();
+            updatePreview();
+        });
+    }
+
+    if (prevVehicleType && prevVehicleType.dataset.bound !== '1') {
+        prevVehicleType.dataset.bound = '1';
+        prevVehicleType.addEventListener('change', function() {
+            syncFromVehicleTypeSelection();
+            updatePreview();
+        });
+    }
+
+    [prevOrg, prevLoc, prevVeh, prevOrgShort, prevLocShort, prevVehShort, prevNr, prevBlock1, prevBlock2, prevBlock3, prevTemplate].forEach(function (el) {
         if (!el) return;
         if (el.dataset.previewBound === '1') return;
         el.dataset.previewBound = '1';
         el.addEventListener('input', updatePreview);
         el.addEventListener('change', updatePreview);
     });
+
+    if (prevWache && prevWache.value) {
+        syncFromStationSelection();
+    }
+    if (prevVehicleType && prevVehicleType.value) {
+        syncFromVehicleTypeSelection();
+    }
     updatePreview();
 }
 

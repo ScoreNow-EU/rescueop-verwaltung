@@ -36,15 +36,15 @@ from app.models import (
 standards_bp = Blueprint('standards', __name__)
 
 NAMING_TOKEN_CATALOG = [
-    {'token': 'ORG', 'description': 'Org-Kürzel (z. B. Florian Leverkusen)'},
-    {'token': 'ORG-SHORT', 'description': 'Abgekürztes Org-Kürzel (z. B. FL)'},
-    {'token': 'ORG_FULL', 'description': 'Org-Langname falls bekannt'},
-    {'token': 'LOCATION', 'description': 'Standort-Kürzel (z. B. 08, LEH)'},
-    {'token': 'LOCATION-SHORT', 'description': 'Standort ohne Sonderzeichen'},
-    {'token': 'LOCATION_FULL', 'description': 'Standort-Langname falls bekannt'},
-    {'token': 'VEHICLE', 'description': 'Fahrzeugkürzel vom Typ (z. B. RTW)'},
-    {'token': 'VEHICLE-SHORT', 'description': 'Fahrzeugkürzel ohne Sonderzeichen'},
-    {'token': 'VEHICLE_NAME', 'description': 'Fahrzeugtyp-Name'},
+    {'token': 'ORG', 'description': 'Organisationsname (z. B. Florian, Berufsfeuerwehr)'},
+    {'token': 'ORG-SHORT', 'description': 'Org-Kürzel (z. B. FL, BF)'},
+    {'token': 'ORG_FULL', 'description': 'Alias von ORG (Langname)'},
+    {'token': 'LOCATION', 'description': 'Standortname (z. B. Hannover, Leverkusen)'},
+    {'token': 'LOCATION-SHORT', 'description': 'Standort-Kürzel (z. B. HAN, LEV)'},
+    {'token': 'LOCATION_FULL', 'description': 'Alias von LOCATION (Langname)'},
+    {'token': 'VEHICLE', 'description': 'Fahrzeugname (z. B. Hilfeleistungslöschgruppenfahrzeug)'},
+    {'token': 'VEHICLE-SHORT', 'description': 'Fahrzeug-Kürzel (z. B. HLF, RTW)'},
+    {'token': 'VEHICLE_NAME', 'description': 'Alias von VEHICLE (Langname)'},
     {'token': 'NUMBER', 'description': 'Nummer unverändert'},
     {'token': 'NUMBER2', 'description': 'Nummer zweistellig (01)'},
     {'token': 'NUMBER3', 'description': 'Nummer dreistellig (001)'},
@@ -470,6 +470,7 @@ def index():
     locations = scoped(NamingLocation).order_by(NamingLocation.abbreviation).all()
     vehicle_types = scoped(VehicleType).order_by(VehicleType.name).all()
     all_modules = scoped(VehicleModule).order_by(VehicleModule.name).all()
+    preview_wachen = scoped(MyWache).order_by(MyWache.name).all()
     naming_presets = scoped(NamingPreset).order_by(NamingPreset.is_default.desc(), NamingPreset.name).all()
     if not naming_presets and active_savegame_is_admin():
         for preset in DEFAULT_NAMING_PRESETS:
@@ -487,6 +488,7 @@ def index():
     return render_template('standards.html', active_tab='standards',
                            org_types=org_types, locations=locations,
                            vehicle_types=vehicle_types, all_modules=all_modules,
+                           preview_wachen=preview_wachen,
                            naming_presets=naming_presets,
                            naming_tokens=NAMING_TOKEN_CATALOG)
 

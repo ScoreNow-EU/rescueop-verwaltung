@@ -476,15 +476,15 @@
                     </div>
                     <div class="row g-2">
                         <div class="col-3">
-                            <label class="form-label small mb-1">Org-Typ</label>
-                            <input type="text" class="form-control form-control-sm" id="vehNamingOrg" placeholder="z.B. FF" maxlength="20">
+                            <label class="form-label small mb-1">ORG (Lang)</label>
+                            <input type="text" class="form-control form-control-sm" id="vehNamingOrg" placeholder="z.B. Berufsfeuerwehr" maxlength="40">
                         </div>
                         <div class="col-3" id="vehNamingLocDiv">
-                            <label class="form-label small mb-1">Standort</label>
-                            <input type="text" class="form-control form-control-sm" id="vehNamingLoc" placeholder="z.B. RIC" maxlength="20">
+                            <label class="form-label small mb-1">LOCATION (Lang)</label>
+                            <input type="text" class="form-control form-control-sm" id="vehNamingLoc" placeholder="z.B. Hannover" maxlength="40">
                         </div>
                         <div class="col-3">
-                            <label class="form-label small mb-1">Kürzel</label>
+                            <label class="form-label small mb-1">VEH-SHORT</label>
                             <input type="text" class="form-control form-control-sm" id="vehNamingAbbr" placeholder="z.B. HLF" maxlength="20">
                         </div>
                         <div class="col-3">
@@ -829,22 +829,24 @@ function initPlannerPage() {
         const tOpt = vehicleTypeSelect ? vehicleTypeSelect.options[vehicleTypeSelect.selectedIndex] : null;
         const wOpt = vehicleWacheSelect ? vehicleWacheSelect.options[vehicleWacheSelect.selectedIndex] : null;
         const now = new Date();
-        const orgFull = wOpt ? (wOpt.dataset.orgFull || '') : '';
-        const locFull = wOpt ? (wOpt.dataset.locFull || '') : '';
+        const orgShort = wOpt ? (wOpt.dataset.org || '') : '';
+        const orgFull = ((wOpt ? (wOpt.dataset.orgFull || '') : '') || org);
+        const locShort = wOpt ? (wOpt.dataset.loc || '') : '';
+        const locFull = ((wOpt ? (wOpt.dataset.locFull || '') : '') || loc);
         const wacheName = wOpt ? (wOpt.dataset.name || '') : '';
         const wacheType = wOpt ? (wOpt.dataset.wacheType || '') : '';
         const wacheLevel = wOpt ? (wOpt.dataset.wacheLevel || '') : '';
         const vehicleName = tOpt ? tOpt.textContent.split('(')[0].trim() : '';
         const tokens = {
-            ORG: org,
-            'ORG-SHORT': shortToken(org),
-            ORG_FULL: orgFull,
-            LOCATION: noLoc ? '' : loc,
-            'LOCATION-SHORT': noLoc ? '' : compactToken(loc),
-            LOCATION_FULL: noLoc ? '' : locFull,
-            VEHICLE: abbr,
-            'VEHICLE-SHORT': compactToken(abbr),
-            VEHICLE_NAME: vehicleName,
+            ORG: orgFull || org,
+            'ORG-SHORT': (orgShort || shortToken(orgFull || org)),
+            ORG_FULL: orgFull || org,
+            LOCATION: noLoc ? '' : (locFull || loc),
+            'LOCATION-SHORT': noLoc ? '' : (locShort || compactToken(locFull || loc)),
+            LOCATION_FULL: noLoc ? '' : (locFull || loc),
+            VEHICLE: vehicleName || abbr,
+            'VEHICLE-SHORT': compactToken(abbr || shortToken(vehicleName)),
+            VEHICLE_NAME: vehicleName || abbr,
             NUMBER: nr,
             NUMBER2: padNumber(nr, 2),
             NUMBER3: padNumber(nr, 3),
@@ -880,18 +882,22 @@ function initPlannerPage() {
         if (!vehicleTypeSelect || !vehicleWacheSelect) return;
         const wOpt = vehicleWacheSelect.options[vehicleWacheSelect.selectedIndex];
         const tOpt = vehicleTypeSelect.options[vehicleTypeSelect.selectedIndex];
-        const org = wOpt ? (wOpt.dataset.org || '') : '';
+        const orgShort = wOpt ? (wOpt.dataset.org || '') : '';
+        const orgFull = wOpt ? (wOpt.dataset.orgFull || '') : '';
         const wacheName = wOpt ? (wOpt.dataset.name || '') : '';
-        const loc = wOpt ? (wOpt.dataset.loc || '') : '';
+        const locShort = wOpt ? (wOpt.dataset.loc || '') : '';
+        const locFull = wOpt ? (wOpt.dataset.locFull || '') : '';
         const noLoc = wOpt ? (wOpt.dataset.noLoc === '1') : false;
         const abbr = tOpt ? (tOpt.dataset.abbr || '') : '';
+        const vehicleName = tOpt ? tOpt.textContent.split('(')[0].trim() : '';
         const blockFromName = ((wacheName || '').match(/(\d{1,3})/) || [null, ''])[1];
-        const orgDisplay = (noLoc && wacheName) ? wacheName : org;
+        const orgDisplay = (noLoc && wacheName) ? wacheName : (orgFull || orgShort);
         if (vehNamingOrg && orgDisplay) vehNamingOrg.value = orgDisplay;
-        if (vehNamingLoc && !noLoc) vehNamingLoc.value = loc;
+        if (vehNamingLoc && !noLoc) vehNamingLoc.value = (locFull || locShort);
         if (vehNamingAbbr && abbr) vehNamingAbbr.value = abbr;
+        if (vehNamingAbbr && !abbr && vehicleName) vehNamingAbbr.value = shortToken(vehicleName);
         if (vehNamingBlock1 && !vehNamingBlock1.value.trim()) vehNamingBlock1.value = blockFromName || '';
-        if (vehNamingBlock2 && !vehNamingBlock2.value.trim() && /^\d+$/.test(loc || '')) vehNamingBlock2.value = loc;
+        if (vehNamingBlock2 && !vehNamingBlock2.value.trim() && /^\d+$/.test(locShort || '')) vehNamingBlock2.value = locShort;
         if (vehNamingLocDiv) vehNamingLocDiv.style.display = noLoc ? 'none' : '';
         if (noLoc && vehNamingLoc) vehNamingLoc.value = '';
         if (vehNamingNr && vehicleWacheSelect.value && vehicleTypeSelect.value) {
@@ -900,8 +906,8 @@ function initPlannerPage() {
         }
         if (namingHints) {
             const hints = [];
-            if (!org) hints.push('<a href="/fleet" target="_blank">Org-Typ an der Wache hinterlegen</a>');
-            if (!noLoc && !loc) hints.push('<a href="/fleet" target="_blank">Standort an der Wache hinterlegen</a>');
+            if (!orgShort && !orgFull) hints.push('<a href="/fleet" target="_blank">Org-Typ an der Wache hinterlegen</a>');
+            if (!noLoc && !locShort && !locFull) hints.push('<a href="/fleet" target="_blank">Standort an der Wache hinterlegen</a>');
             if (!abbr) hints.push('<a href="/vehicles" target="_blank">Kürzel am Fahrzeugtyp hinterlegen</a>');
             namingHints.innerHTML = hints.length
                 ? '<small class="text-warning"><i class="bi bi-exclamation-triangle me-1"></i>' + hints.join(' · ') + '</small>'
