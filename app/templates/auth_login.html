@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - RescueOp Verwaltung</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="bg-light">
+    <main class="container py-5">
+        <div class="row justify-content-center">
+            <div class="col-md-5 col-lg-4">
+                <div class="card shadow-sm">
+                    <div class="card-body p-4">
+                        <h1 class="h4 mb-3">RescueOp Login</h1>
+                        {% with messages = get_flashed_messages(with_categories=true) %}
+                        {% if messages %}
+                        {% for category, message in messages %}
+                        <div class="alert alert-{{ 'success' if category == 'success' else 'danger' }} py-2">{{ message }}</div>
+                        {% endfor %}
+                        {% endif %}
+                        {% endwith %}
+                        <form method="post" action="{{ url_for('auth.login', next=request.args.get('next')) }}">
+                            <div class="mb-3">
+                                <label class="form-label">Benutzername</label>
+                                <input name="username" class="form-control" required autofocus>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Passwort</label>
+                                <input name="password" type="password" class="form-control" required>
+                            </div>
+                            <button class="btn btn-primary w-100" type="submit">Einloggen</button>
+                        </form>
+                        <div class="mt-3 small text-muted">
+                            {% if show_register %}
+                            Noch kein Benutzer vorhanden? <a href="{{ url_for('auth.register') }}">Jetzt registrieren</a>
+                            {% else %}
+                            Account-Erstellung ist aktiviert unter <a href="{{ url_for('auth.register') }}">Registrieren</a>.
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+</body>
+</html>

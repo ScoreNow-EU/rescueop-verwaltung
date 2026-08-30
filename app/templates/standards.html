@@ -1,0 +1,486 @@
+{% extends "base.html" %}
+{% block content %}
+<div id="standardsPageRoot" data-async-root="1">
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h2><i class="bi bi-bookmark-check me-2"></i>Standards</h2>
+    <div class="d-flex gap-2">
+        <a class="btn btn-outline-primary" href="/backup/export">
+            <i class="bi bi-download me-1"></i>Backup Export
+        </a>
+        <button class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#importBackupModal">
+            <i class="bi bi-upload me-1"></i>Backup Import
+        </button>
+    </div>
+</div>
+
+<!-- Tabs -->
+<ul class="nav nav-tabs mb-4" id="standardsTabs" role="tablist">
+    <li class="nav-item" role="presentation">
+        <button class="nav-link active" id="naming-tab" data-bs-toggle="tab" data-bs-target="#naming"
+                type="button" role="tab">
+            <i class="bi bi-tag me-1"></i>Benennungs-Standards
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="stdmod-tab" data-bs-toggle="tab" data-bs-target="#stdmod"
+                type="button" role="tab">
+            <i class="bi bi-gear me-1"></i>Standard-Module
+        </button>
+    </li>
+</ul>
+
+<div class="tab-content" id="standardsTabContent">
+
+    <!-- ===== TAB: Benennungs-Standards ===== -->
+    <div class="tab-pane fade show active" id="naming" role="tabpanel">
+
+        <!-- Naming preview card -->
+        <div class="card mb-4 border-primary">
+            <div class="card-header bg-primary text-white">
+                <i class="bi bi-eye me-1"></i>Vorschau Benennungsschema
+            </div>
+            <div class="card-body">
+                <p class="text-muted mb-3">
+                    Format: <code>ORGTYP-STANDORT-FAHRZEUGKÜRZEL&lt;NR&gt;</code> — z.B.
+                    <strong>FF-LIN-HLF3</strong> = Freiwillige Feuerwehr Linden, HLF, Nr. 3
+                </p>
+                <div class="row g-2 align-items-end" id="previewRow">
+                    <div class="col-auto">
+                        <label class="form-label">Org-Typ</label>
+                        <select class="form-select form-select-sm" id="prev_org">
+                            <option value="" data-no-location="0">—</option>
+                            {% for o in org_types %}
+                            <option value="{{ o.abbreviation }}" data-no-location="{{ '1' if o.no_location else '0' }}">{{ o.abbreviation }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-auto">
+                        <label class="form-label">Standort</label>
+                        <select class="form-select form-select-sm" id="prev_loc">
+                            <option value="">—</option>
+                            {% for l in locations %}
+                            <option value="{{ l.abbreviation }}">{{ l.abbreviation }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-auto">
+                        <label class="form-label">Fahrzeug-Kürzel</label>
+                        <input type="text" class="form-control form-control-sm" id="prev_veh" placeholder="z.B. HLF" style="width:100px">
+                    </div>
+                    <div class="col-auto">
+                        <label class="form-label">Nr.</label>
+                        <input type="number" class="form-control form-control-sm" id="prev_nr" min="1" placeholder="1" style="width:70px">
+                    </div>
+                    <div class="col-auto">
+                        <label class="form-label">Ergebnis</label>
+                        <div class="input-group">
+                            <span class="form-control form-control-sm bg-light fw-bold text-primary" id="previewResult" style="min-width:160px">—</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row g-4">
+
+            <!-- Org Types -->
+            <div class="col-lg-6">
+                <div class="card h-100">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <span><i class="bi bi-building me-1"></i>Organisations-Typen</span>
+                        <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#addOrgModal">
+                            <i class="bi bi-plus-lg"></i>
+                        </button>
+                    </div>
+                    <div class="card-body p-0">
+                        {% if org_types %}
+                        <table class="table table-hover table-sm mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Kürzel</th>
+                                    <th>Voller Name</th>
+                                    <th>Kein Standort</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for o in org_types %}
+                                <tr>
+                                    <td><span class="badge bg-secondary fs-6">{{ o.abbreviation }}</span></td>
+                                    <td>{{ o.full_name }}</td>
+                                    <td>
+                                        {% if o.no_location %}
+                                        <span class="badge bg-warning text-dark"><i class="bi bi-geo-alt-slash me-1"></i>Ja</span>
+                                        {% else %}
+                                        <span class="text-muted">—</span>
+                                        {% endif %}
+                                    </td>
+                                    <td class="text-end">
+                                        <button class="btn btn-sm btn-outline-secondary"
+                                                data-bs-toggle="modal"
+                                                data-bs-target="#editOrgModal{{ o.id }}">
+                                            <i class="bi bi-pencil"></i>
+                                        </button>
+                                        <form method="post" action="/standards/org/{{ o.id }}/delete" class="d-inline" data-async="1" data-confirm-msg="Org-Typ &quot;{{ o.abbreviation }}&quot; wirklich löschen?">
+                                            <button type="submit" class="btn btn-sm btn-outline-danger">
+                                                <i class="bi bi-trash"></i>
+                                            </button>
+                                        </form>
+                                    </td>
+                                </tr>
+
+                                <!-- Edit Modal -->
+                                <div class="modal fade" id="editOrgModal{{ o.id }}" tabindex="-1">
+                                    <div class="modal-dialog">
+                                        <form method="post" action="/standards/org/{{ o.id }}/edit" data-async="1">
+                                            <div class="modal-content">
+                                                <div class="modal-header">
+                                                    <h5 class="modal-title">Org-Typ bearbeiten</h5>
+                                                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                                </div>
+                                                <div class="modal-body row g-3">
+                                                    <div class="col-4">
+                                                        <label class="form-label">Kürzel</label>
+                                                        <input type="text" name="abbreviation" class="form-control"
+                                                               value="{{ o.abbreviation }}" required maxlength="20">
+                                                    </div>
+                                                    <div class="col-8">
+                                                        <label class="form-label">Voller Name</label>
+                                                        <input type="text" name="full_name" class="form-control"
+                                                               value="{{ o.full_name }}" required maxlength="120">
+                                                    </div>
+                                                    <div class="col-12">
+                                                        <div class="form-check">
+                                                            <input class="form-check-input" type="checkbox"
+                                                                   name="no_location" id="noLoc{{ o.id }}"
+                                                                   {% if o.no_location %}checked{% endif %}>
+                                                            <label class="form-check-label" for="noLoc{{ o.id }}">
+                                                                Kein Standort-Kürzel
+                                                                <small class="text-muted">(z.B. BF → BF1, BF2, …)</small>
+                                                            </label>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div class="modal-footer">
+                                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Abbrechen</button>
+                                                    <button type="submit" class="btn btn-primary">Speichern</button>
+                                                </div>
+                                            </div>
+                                        </form>
+                                    </div>
+                                </div>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                        {% else %}
+                        <p class="text-muted p-3 mb-0">Noch keine Organisations-Typen angelegt.</p>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Locations -->
+            <div class="col-lg-6">
+                <div class="card h-100">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <span><i class="bi bi-geo-alt me-1"></i>Standorte</span>
+                        <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#addLocModal">
+                            <i class="bi bi-plus-lg"></i>
+                        </button>
+                    </div>
+                    <div class="card-body p-0">
+                        {% if locations %}
+                        <table class="table table-hover table-sm mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Kürzel</th>
+                                    <th>Voller Name</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for l in locations %}
+                                <tr>
+                                    <td><span class="badge bg-info text-dark fs-6">{{ l.abbreviation }}</span></td>
+                                    <td>{{ l.full_name }}</td>
+                                    <td class="text-end">
+                                        <button class="btn btn-sm btn-outline-secondary"
+                                                data-bs-toggle="modal"
+                                                data-bs-target="#editLocModal{{ l.id }}">
+                                            <i class="bi bi-pencil"></i>
+                                        </button>
+                                        <form method="post" action="/standards/location/{{ l.id }}/delete" class="d-inline" data-async="1" data-confirm-msg="Standort &quot;{{ l.abbreviation }}&quot; wirklich löschen?">
+                                            <button type="submit" class="btn btn-sm btn-outline-danger">
+                                                <i class="bi bi-trash"></i>
+                                            </button>
+                                        </form>
+                                    </td>
+                                </tr>
+
+                                <!-- Edit Modal -->
+                                <div class="modal fade" id="editLocModal{{ l.id }}" tabindex="-1">
+                                    <div class="modal-dialog">
+                                        <form method="post" action="/standards/location/{{ l.id }}/edit" data-async="1">
+                                            <div class="modal-content">
+                                                <div class="modal-header">
+                                                    <h5 class="modal-title">Standort bearbeiten</h5>
+                                                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                                </div>
+                                                <div class="modal-body row g-3">
+                                                    <div class="col-4">
+                                                        <label class="form-label">Kürzel</label>
+                                                        <input type="text" name="abbreviation" class="form-control"
+                                                               value="{{ l.abbreviation }}" required maxlength="20">
+                                                    </div>
+                                                    <div class="col-8">
+                                                        <label class="form-label">Voller Name</label>
+                                                        <input type="text" name="full_name" class="form-control"
+                                                               value="{{ l.full_name }}" required maxlength="120">
+                                                    </div>
+                                                </div>
+                                                <div class="modal-footer">
+                                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Abbrechen</button>
+                                                    <button type="submit" class="btn btn-primary">Speichern</button>
+                                                </div>
+                                            </div>
+                                        </form>
+                                    </div>
+                                </div>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                        {% else %}
+                        <p class="text-muted p-3 mb-0">Noch keine Standorte angelegt.</p>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div><!-- /naming tab -->
+
+    <!-- ===== TAB: Standard-Module ===== -->
+    <div class="tab-pane fade" id="stdmod" role="tabpanel">
+        <p class="text-muted mb-4">
+            Hier kannst du für jeden Fahrzeugtyp ein Standard-Modul-Set festlegen.
+            Diese Auswahl kann später beim Hinzufügen neuer Fahrzeuge als Vorlage genutzt werden.
+        </p>
+
+        {% if vehicle_types %}
+        <div class="accordion" id="stdModAccordion">
+            {% for vt in vehicle_types %}
+            <div class="accordion-item">
+                <h2 class="accordion-header">
+                    <button class="accordion-button collapsed" type="button"
+                            data-bs-toggle="collapse" data-bs-target="#stdmod-{{ vt.id }}">
+                        <span class="d-flex align-items-center gap-3 w-100">
+                            {% if vt.image %}
+                            <img src="/assets/vehicles/{{ vt.image }}" alt="{{ vt.name }}" class="vehicle-thumb">
+                            {% else %}
+                            <span class="vehicle-thumb-placeholder"><i class="bi bi-truck"></i></span>
+                            {% endif %}
+                            <strong>{{ vt.name }}</strong>
+                            <span class="badge bg-success ms-auto me-3">
+                                {{ vt.standard_modules | length }} Standard-Module
+                            </span>
+                        </span>
+                    </button>
+                </h2>
+                <div id="stdmod-{{ vt.id }}" class="accordion-collapse collapse">
+                    <div class="accordion-body">
+                        <form method="post" action="/standards/modules/{{ vt.id }}/save" data-async="1" data-keep-open-id="stdmod-{{ vt.id }}">
+                            {% if vt.modules %}
+                            <p class="text-muted small mb-2">
+                                Nur kompatible Module werden angezeigt.
+                                Module können unter <a href="/vehicles">Fahrzeugtypen</a> verwaltet werden.
+                            </p>
+                            <div class="row g-2 mb-3">
+                                {% for mod in vt.modules %}
+                                {% set is_std = mod in vt.standard_modules %}
+                                <div class="col-sm-6 col-md-4 col-lg-3">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox"
+                                               name="module_ids" value="{{ mod.id }}"
+                                               id="stdmod_{{ vt.id }}_{{ mod.id }}"
+                                               {% if is_std %}checked{% endif %}>
+                                        <label class="form-check-label" for="stdmod_{{ vt.id }}_{{ mod.id }}">
+                                            {{ mod.name }}
+                                            <small class="text-muted">
+                                                ({{ '{:,.0f}'.format(mod.price).replace(',', '.') }} €)
+                                            </small>
+                                        </label>
+                                    </div>
+                                </div>
+                                {% endfor %}
+                            </div>
+                            {% else %}
+                            <p class="text-muted">Keine kompatiblen Module für diesen Fahrzeugtyp hinterlegt.</p>
+                            {% endif %}
+                            <button type="submit" class="btn btn-sm btn-primary">
+                                <i class="bi bi-check-lg me-1"></i>Speichern
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="alert alert-info">Noch keine Fahrzeugtypen vorhanden.</div>
+        {% endif %}
+    </div><!-- /stdmod tab -->
+
+</div><!-- /tab-content -->
+
+
+<!-- Add Org Modal -->
+<div class="modal fade" id="addOrgModal" tabindex="-1">
+    <div class="modal-dialog">
+        <form method="post" action="/standards/org/add" data-async="1">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-plus-lg me-1"></i>Neuer Organisations-Typ</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body row g-3">
+                    <div class="col-4">
+                        <label class="form-label">Kürzel *</label>
+                        <input type="text" name="abbreviation" class="form-control" placeholder="FF" required maxlength="20">
+                        <div class="form-text">z.B. FF, RW, BF</div>
+                    </div>
+                    <div class="col-8">
+                        <label class="form-label">Voller Name *</label>
+                        <input type="text" name="full_name" class="form-control"
+                               placeholder="Freiwillige Feuerwehr" required maxlength="120">
+                    </div>
+                    <div class="col-12">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="no_location" id="addOrgNoLoc">
+                            <label class="form-check-label" for="addOrgNoLoc">
+                                Kein Standort-Kürzel
+                                <small class="text-muted">(z.B. BF → BF1, BF2, …)</small>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Abbrechen</button>
+                    <button type="submit" class="btn btn-primary">Hinzufügen</button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Add Location Modal -->
+<div class="modal fade" id="addLocModal" tabindex="-1">
+    <div class="modal-dialog">
+        <form method="post" action="/standards/location/add" data-async="1">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-plus-lg me-1"></i>Neuer Standort</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body row g-3">
+                    <div class="col-4">
+                        <label class="form-label">Kürzel *</label>
+                        <input type="text" name="abbreviation" class="form-control" placeholder="LIN" required maxlength="20">
+                        <div class="form-text">z.B. LIN, GBU</div>
+                    </div>
+                    <div class="col-8">
+                        <label class="form-label">Voller Name *</label>
+                        <input type="text" name="full_name" class="form-control"
+                               placeholder="Linden" required maxlength="120">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Abbrechen</button>
+                    <button type="submit" class="btn btn-primary">Hinzufügen</button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+</div>
+
+<!-- Import Backup Modal -->
+<div class="modal fade" id="importBackupModal" tabindex="-1">
+    <div class="modal-dialog">
+        <form method="post" action="/backup/import" enctype="multipart/form-data" data-async="1">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-upload me-1"></i>Backup importieren</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="text-muted small mb-3">
+                        Import ersetzt die aktuelle Datenbank. Vor dem Ersetzen wird automatisch eine
+                        Sicherheitskopie als .bak Datei erstellt.
+                    </p>
+                    <div class="mb-2">
+                        <label class="form-label">Backup-Datei</label>
+                        <input type="file" name="backup_file" class="form-control" accept=".db,.sqlite,.sqlite3" required>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Abbrechen</button>
+                    <button type="submit" class="btn btn-primary">Import starten</button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+function initStandardsPreview() {
+    var prevOrg = document.getElementById('prev_org');
+    var prevLoc = document.getElementById('prev_loc');
+    var prevVeh = document.getElementById('prev_veh');
+    var prevNr = document.getElementById('prev_nr');
+    var previewResult = document.getElementById('previewResult');
+    if (!prevOrg || !prevLoc || !prevVeh || !prevNr || !previewResult) {
+        return;
+    }
+    var locDiv = prevLoc.closest('.col-auto');
+
+    function updatePreview() {
+        var orgSel  = prevOrg;
+        var locSel  = prevLoc;
+        var org     = orgSel.value;
+        var noLoc   = orgSel.options[orgSel.selectedIndex].dataset.noLocation === '1';
+        var loc     = locSel.value;
+        var veh     = prevVeh.value.trim().toUpperCase();
+        var nr      = prevNr.value.trim();
+
+        // Show/hide location selector
+        locDiv.style.opacity = noLoc ? '0.4' : '1';
+        locSel.disabled = noLoc;
+        if (noLoc) locSel.value = '';
+
+        var parts = [];
+        if (org) parts.push(org);
+        if (!noLoc && loc) parts.push(loc);
+        var last = veh;
+        if (nr) last += nr;
+        if (last) parts.push(last);
+
+        previewResult.textContent = parts.length ? parts.join('-') : '—';
+    }
+
+    [prevOrg, prevLoc, prevVeh, prevNr].forEach(function (el) {
+        if (el.dataset.previewBound === '1') return;
+        el.dataset.previewBound = '1';
+        el.addEventListener('input', updatePreview);
+        el.addEventListener('change', updatePreview);
+    });
+    updatePreview();
+}
+
+document.addEventListener('DOMContentLoaded', initStandardsPreview);
+document.addEventListener('app:content-updated', initStandardsPreview);
+</script>
+{% endblock %}

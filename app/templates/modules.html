@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block content %}
+<div id="modulesPageRoot" data-async-root="1">
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h2><i class="bi bi-gear me-2"></i>Module</h2>
+    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addModuleModal">
+        <i class="bi bi-plus-lg me-1"></i>Neues Modul
+    </button>
+</div>
+
+{% if modules %}
+<table class="table table-striped">
+    <thead>
+        <tr>
+            <th>Name</th>
+            <th>Preis (€)</th>
+            <th>Verwendet bei</th>
+            <th style="width:200px">Aktionen</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for mod in modules %}
+        <tr>
+            <td>
+                <form method="post" action="/modules/{{ mod.id }}/edit" class="d-flex gap-2" id="modform-{{ mod.id }}" data-async="1">
+                    <input type="text" name="name" class="form-control form-control-sm" value="{{ mod.name }}" required>
+            </td>
+            <td>
+                    <input type="number" step="0.01" name="price" class="form-control form-control-sm" value="{{ mod.price }}">
+                </form>
+            </td>
+            <td>
+                {% for vt in mod.vehicle_types %}
+                <span class="badge bg-secondary me-1">{{ vt.name }}</span>
+                {% endfor %}
+                {% if not mod.vehicle_types %}
+                <span class="text-muted">—</span>
+                {% endif %}
+            </td>
+            <td>
+                <button type="submit" form="modform-{{ mod.id }}" class="btn btn-sm btn-outline-primary">
+                    <i class="bi bi-check-lg"></i> Speichern
+                </button>
+                <form method="post" action="/modules/{{ mod.id }}/delete" class="d-inline" data-async="1" data-confirm-msg="Modul &quot;{{ mod.name }}&quot; wirklich löschen?">
+                    <button type="submit" class="btn btn-sm btn-outline-danger">
+                        <i class="bi bi-trash"></i>
+                    </button>
+                </form>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<div class="alert alert-info">Noch keine Module angelegt. Klicke auf „Neues Modul".</div>
+{% endif %}
+
+<!-- Add Module Modal -->
+<div class="modal fade" id="addModuleModal" tabindex="-1">
+    <div class="modal-dialog">
+        <form method="post" action="/modules/add" class="modal-content" data-async="1">
+            <div class="modal-header">
+                <h5 class="modal-title">Neues Modul</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">Name</label>
+                    <input type="text" name="name" class="form-control" required autofocus>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Preis (€)</label>
+                    <input type="number" step="0.01" name="price" class="form-control" value="0">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Abbrechen</button>
+                <button type="submit" class="btn btn-primary"><i class="bi bi-plus-lg me-1"></i>Erstellen</button>
+            </div>
+        </form>
+    </div>
+</div>
+</div>
+{% endblock %}

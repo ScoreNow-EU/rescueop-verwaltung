@@ -1,0 +1,902 @@
+{% extends "base.html" %}
+{% block content %}
+<div id="plannerPageRoot" data-async-root="1">
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h2><i class="bi bi-list-check me-2"></i>Planer</h2>
+    <div class="d-flex gap-2">
+        <form method="post" action="/planner/add/divider" class="d-flex gap-1" data-async="1">
+            <input type="text" name="divider_label" class="form-control form-control-sm" placeholder="Abschnitt-Name" style="width:160px">
+            <button class="btn btn-sm btn-outline-secondary text-nowrap"><i class="bi bi-distribute-vertical me-1"></i>Trenner</button>
+        </form>
+        <button class="btn btn-warning" data-bs-toggle="modal" data-bs-target="#addWacheModal">
+            <i class="bi bi-building me-1"></i>Wache (aus)bauen
+        </button>
+        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addVehicleModal">
+            <i class="bi bi-truck me-1"></i>Fahrzeug kaufen
+        </button>
+    </div>
+</div>
+
+{% if items %}
+<div class="card mb-4">
+    <div class="card-header d-flex justify-content-between">
+        <strong>Geplante Anschaffungen</strong>
+        <span class="badge bg-primary fs-6">Gesamt: {{ '{:,.0f}'.format(running[-1] if running else 0).replace(',', '.') }} €</span>
+    </div>
+    <div class="card-body p-0">
+        <div class="accordion" id="plannerAccordion">
+            {% set ns = namespace(row_num=0) %}
+            {% for sec in sections %}
+            {% set section_items = items[sec.start:sec.end] %}
+            {% set divider_item = section_items[0] if section_items and section_items[0].category == 'divider' else None %}
+            {% set section_rows = section_items[1:] if divider_item else section_items %}
+            {% set section_id = 'planner-section-' ~ loop.index %}
+            <div class="accordion-item border-0 border-bottom rounded-0 planner-section"{% if divider_item %} data-divider-id="{{ divider_item.id }}"{% endif %}>
+                <h2 class="accordion-header" id="{{ section_id }}-header">
+                    <button class="accordion-button{% if not divider_item %} collapsed{% endif %}" type="button"
+                            data-bs-toggle="collapse" data-bs-target="#{{ section_id }}-collapse"
+                            aria-expanded="{{ 'true' if divider_item else 'false' }}">
+                        <span class="d-flex align-items-center gap-2 w-100">
+                            <i class="bi {% if divider_item %}bi-distribute-vertical{% else %}bi-list-ul{% endif %}"></i>
+                            {% if divider_item %}
+                            <span class="fw-bold">{{ divider_item.notes or 'Abschnitt' }}</span>
+                            {% else %}
+                            <span class="fw-bold text-muted">Vergangene Planung ohne Abschnitt</span>
+                            {% endif %}
+                            <span class="badge bg-primary ms-auto me-2">{{ '{:,.0f}'.format(sec.subtotal).replace(',', '.') }} €</span>
+                        </span>
+                    </button>
+                </h2>
+                <div id="{{ section_id }}-collapse" class="accordion-collapse collapse{% if divider_item %} show{% endif %}">
+                    <div class="accordion-body p-0">
+                        {% if divider_item %}
+                        <div class="px-3 pt-3 d-flex gap-2 align-items-start flex-wrap">
+                            <form method="post" action="/planner/{{ divider_item.id }}/rename_divider" class="d-flex gap-2 flex-grow-1" data-async="1" data-keep-open-id="{{ section_id }}-collapse">
+                                <input type="text" name="divider_label" value="{{ divider_item.notes or '' }}" class="form-control form-control-sm fw-bold" style="max-width:320px">
+                                <button class="btn btn-sm btn-outline-secondary" title="Umbenennen"><i class="bi bi-check-lg"></i></button>
+                            </form>
+                            <form method="post" action="/planner/{{ divider_item.id }}/delete" onsubmit="return confirm('Abschnitt-Trenner löschen?')" data-async="1" data-keep-open-id="{{ section_id }}-collapse">
+                                <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+                            </form>
+                        </div>
+                        {% endif %}
+                        <div class="table-responsive">
+                            <table class="table table-hover mb-0">
+                                <thead>
+                                    <tr>
+                                        <th style="width:40px"><i class="bi bi-grip-vertical"></i></th>
+                                        <th style="width:40px">#</th>
+                                        <th>Kategorie</th>
+                                        <th>Beschreibung</th>
+                                        <th class="text-center">Fahrzeuge</th>
+                                        <th class="text-end">Kosten</th>
+                                        <th class="text-end">Laufende Summe</th>
+                                        <th style="width:140px">Aktionen</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="section-items">
+                                    {% for item in section_rows %}
+                                    {% set ns.row_num = ns.row_num + 1 %}
+                                    {% set item_idx = sec.start + loop.index0 + (1 if divider_item else 0) %}
+                                    <tr data-id="{{ item.id }}">
+                                        <td class="drag-handle"><i class="bi bi-grip-vertical text-muted"></i></td>
+                                        <td>{{ ns.row_num }}</td>
+                                        <td>
+                                            {% if item.category == 'wache_buy' %}
+                                            <span class="badge bg-warning text-dark"><i class="bi bi-building me-1"></i>Neue Wache</span>
+                                            {% elif item.category == 'wache_upgrade' %}
+                                            <span class="badge bg-warning text-dark"><i class="bi bi-arrow-up-circle me-1"></i>Ausbau</span>
+                                            {% elif item.category == 'wache_extension' %}
+                                            <span class="badge bg-info"><i class="bi bi-wrench me-1"></i>Erweiterung</span>
+                                            {% elif item.category == 'vehicle' %}
+                                            <span class="badge bg-primary"><i class="bi bi-truck me-1"></i>Fahrzeug</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            {% if item.category == 'vehicle' %}
+                                                {% if item.vehicle_nickname %}
+                                                <div class="d-flex align-items-center gap-2">
+                                                    <strong>{{ item.vehicle_nickname }}</strong>
+                                                    <button type="button" class="btn btn-link btn-sm p-0 text-muted" style="line-height:1" onclick="toggleNicknameEdit({{ item.id }})">
+                                                        <i class="bi bi-pencil-fill" style="font-size:.75rem"></i>
+                                                    </button>
+                                                </div>
+                                                <small class="text-muted">{{ item.vehicle_type.name if item.vehicle_type else '?' }}{% if item.vehicle_wache %} → {{ item.vehicle_wache.name }}{% endif %}{% if item.selected_modules %} · {{ item.selected_modules | map(attribute='name') | join(', ') }}{% endif %}</small>
+                                                {% else %}
+                                                <div class="d-flex align-items-center gap-2">
+                                                    <span class="text-muted fst-italic">kein Rufname</span>
+                                                    <button type="button" class="btn btn-link btn-sm p-0 text-primary" style="line-height:1" onclick="toggleNicknameEdit({{ item.id }})">
+                                                        <i class="bi bi-pencil-fill" style="font-size:.75rem"></i> setzen
+                                                    </button>
+                                                </div>
+                                                <small class="text-muted">{{ item.description }}</small>
+                                                {% endif %}
+                                                <form method="post" action="/planner/{{ item.id }}/set_nickname" id="nicknameForm{{ item.id }}" class="d-none mt-1" data-async="1" data-keep-open-id="{{ section_id }}-collapse">
+                                                    <div class="input-group input-group-sm">
+                                                        <input type="text" name="vehicle_nickname" class="form-control" value="{{ item.vehicle_nickname or '' }}" placeholder="Rufname">
+                                                        <button type="submit" class="btn btn-outline-primary"><i class="bi bi-check-lg"></i></button>
+                                                        <button type="button" class="btn btn-outline-secondary" onclick="toggleNicknameEdit({{ item.id }})"><i class="bi bi-x-lg"></i></button>
+                                                    </div>
+                                                </form>
+                                            {% else %}
+                                            {{ item.description }}
+                                            {% endif %}
+                                            {% if item.notes %}<br><small class="text-muted">{{ item.notes }}</small>{% endif %}
+                                        </td>
+                                        <td class="text-center">
+                                            {% set cap = capacity_info[item_idx] %}
+                                            {% if cap %}
+                                                {% if cap.max > 0 %}
+                                                <span class="badge {% if cap.current > cap.max %}bg-danger{% elif cap.current == cap.max %}bg-warning text-dark{% else %}bg-success{% endif %}">
+                                                    {{ cap.current }}/{{ cap.max }}
+                                                </span>
+                                                {% else %}
+                                                <span class="badge bg-secondary">{{ cap.current }}/?</span>
+                                                {% endif %}
+                                            {% endif %}
+                                        </td>
+                                        <td class="text-end">{{ '{:,.0f}'.format(item.cost).replace(',', '.') }} €</td>
+                                        <td class="text-end fw-bold">{{ '{:,.0f}'.format(running[item_idx]).replace(',', '.') }} €</td>
+                                        <td>
+                                            <div class="d-flex gap-1">
+                                                <form method="post" action="/planner/{{ item.id }}/done" data-async="1" data-keep-open-id="{{ section_id }}-collapse">
+                                                    <button class="btn btn-sm btn-outline-success" title="Erledigt &amp; übernehmen"><i class="bi bi-check-lg"></i></button>
+                                                </form>
+                                                <form method="post" action="/planner/{{ item.id }}/delete" onsubmit="return confirm('Eintrag löschen?')" data-async="1" data-keep-open-id="{{ section_id }}-collapse">
+                                                    <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+                                                </form>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% else %}
+<div class="alert alert-info">Noch keine Einträge im Planer.</div>
+{% endif %}
+
+{% if done_items %}
+<div class="card mt-4">
+    <div class="accordion" id="plannerDoneAccordion">
+        <div class="accordion-item">
+            <h2 class="accordion-header">
+                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#doneSectionCollapse" aria-expanded="false">
+                    <i class="bi bi-check-circle me-2"></i><strong>Vergangenheit</strong>
+                    <span class="badge bg-success ms-3">{{ done_items|length }} Einträge</span>
+                </button>
+            </h2>
+            <div id="doneSectionCollapse" class="accordion-collapse collapse">
+                <div class="accordion-body p-0">
+                    <table class="table table-sm mb-0">
+                        <thead>
+                            <tr><th>Kategorie</th><th>Beschreibung</th><th class="text-end">Kosten</th><th style="width:120px">Aktionen</th></tr>
+                        </thead>
+                        <tbody>
+                            {% for item in done_items %}
+                            <tr class="text-muted">
+                                <td>
+                                    {% if item.category == 'wache_buy' %}
+                                    <span class="badge bg-warning text-dark"><i class="bi bi-building"></i></span>
+                                    {% elif item.category == 'wache_upgrade' %}
+                                    <span class="badge bg-warning text-dark"><i class="bi bi-arrow-up-circle"></i></span>
+                                    {% elif item.category == 'wache_extension' %}
+                                    <span class="badge bg-info"><i class="bi bi-wrench"></i></span>
+                                    {% elif item.category == 'vehicle' %}
+                                    <span class="badge bg-primary"><i class="bi bi-truck"></i></span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if item.category == 'vehicle' and item.vehicle_nickname %}
+                                    <del><strong>{{ item.vehicle_nickname }}</strong></del>
+                                    <br><small class="text-muted">{{ item.vehicle_type.name if item.vehicle_type else '?' }}{% if item.vehicle_wache %} → {{ item.vehicle_wache.name }}{% endif %}</small>
+                                    {% else %}
+                                    <del>{{ item.description }}</del>
+                                    {% endif %}
+                                </td>
+                                <td class="text-end">{{ '{:,.0f}'.format(item.cost).replace(',', '.') }} €</td>
+                                <td>
+                                    <form method="post" action="/planner/{{ item.id }}/undone" class="d-inline" data-async="1">
+                                        <button class="btn btn-sm btn-outline-secondary" title="Zurück in Planung"><i class="bi bi-arrow-counterclockwise"></i></button>
+                                    </form>
+                                    <form method="post" action="/planner/{{ item.id }}/delete" class="d-inline" onsubmit="return confirm('Endgültig löschen?')" data-async="1">
+                                        <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+                                    </form>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<div class="modal fade" id="addWacheModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-building me-2"></i>Wache (aus)bauen</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <ul class="nav nav-tabs mb-3" role="tablist">
+                    <li class="nav-item">
+                        <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#wacheKaufen">Neue Wache kaufen</button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#wacheAusbauen">Wache ausbauen</button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#wacheErweitern">Wache erweitern</button>
+                    </li>
+                </ul>
+                <div class="tab-content">
+                    <div class="tab-pane fade show active" id="wacheKaufen">
+                        <form method="post" action="/planner/add/wache_buy" id="formWacheBuy" data-async="1">
+                            {% if org_types %}
+                            <div class="row g-2 mb-2 align-items-end">
+                                <div class="col-5">
+                                    <label class="form-label">Org-Typ</label>
+                                    <select class="form-select form-select-sm" id="wacheBuyOrg">
+                                        <option value="" data-no-location="0">— keiner —</option>
+                                        {% for o in org_types %}
+                                        <option value="{{ o.abbreviation }}" data-no-location="{{ '1' if o.no_location else '0' }}">
+                                            {{ o.abbreviation }} – {{ o.full_name }}
+                                        </option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <div class="col-4" id="wacheBuyLocDiv">
+                                    <label class="form-label">Standort</label>
+                                    <select class="form-select form-select-sm" id="wacheBuyLoc">
+                                        <option value="">— keiner —</option>
+                                        {% for l in locations %}
+                                        <option value="{{ l.abbreviation }}">{{ l.abbreviation }} – {{ l.full_name }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <div class="col-3" id="wacheBuyNrDiv" style="display:none">
+                                    <label class="form-label">Nr.</label>
+                                    <input type="number" class="form-control form-control-sm" id="wacheBuyNr" min="1" placeholder="1">
+                                </div>
+                                <div class="col-auto">
+                                    <button type="button" class="btn btn-sm btn-outline-secondary" id="wacheBuyGenBtn" title="Namen generieren">
+                                        <i class="bi bi-magic me-1"></i>Generieren
+                                    </button>
+                                </div>
+                            </div>
+                            {% endif %}
+                            <div class="mb-3">
+                                <label class="form-label">Name der Wache</label>
+                                <input type="text" name="wache_name" class="form-control" id="wacheBuyName" required placeholder="z.B. FF-LIN">
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Wachen-Typ</label>
+                                <select name="wache_type_id" class="form-select" required id="wacheBuyType">
+                                    <option value="">— wählen —</option>
+                                    {% for wt in wache_types %}
+                                    <option value="{{ wt.id }}" data-cost="{{ wt.levels[0].cost if wt.levels else 0 }}" data-max-vehicles="{{ wt.levels[0].max_vehicles if wt.levels else 0 }}">{{ wt.name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="mb-2" id="wacheBuyCost" style="display:none">
+                                <span class="fw-bold">Kosten: <span id="wacheBuyCostVal"></span> €</span>
+                                <br><small class="text-muted">Max. Fahrzeuge: <span id="wacheBuyMaxVeh"></span></small>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Notizen (optional)</label>
+                                <textarea name="notes" class="form-control" rows="1"></textarea>
+                            </div>
+                            <button type="submit" class="btn btn-primary"><i class="bi bi-plus-lg me-1"></i>Zum Planer hinzufügen</button>
+                        </form>
+                    </div>
+                    <div class="tab-pane fade" id="wacheErweitern">
+                        <form method="post" action="/planner/add/wache_extension" id="formWacheExtension" data-async="1">
+                            <div class="mb-3">
+                                <label class="form-label">Wache</label>
+                                <select name="extension_wache_ref" class="form-select" required id="extWacheSelect">
+                                    <option value="">— wählen —</option>
+                                    <option disabled>— aktive Wachen —</option>
+                                    {% for w in planner_wachen if w.kind == 'real' %}
+                                    <option value="{{ w.ref }}">{{ w.name }} ({{ w.wache_type.name }})</option>
+                                    {% endfor %}
+                                    <option disabled>— geplante Wachen —</option>
+                                    {% for w in planner_wachen if w.kind == 'planned' %}
+                                    <option value="{{ w.ref }}">{{ w.name }} ({{ w.wache_type.name }}, geplant)</option>
+                                    {% endfor %}
+                                </select>
+                                <small class="text-muted d-block mt-1">Hier erscheinen auch Wachen, die im Planer nur als Kauf eingetragen sind.</small>
+                            </div>
+                            <div class="mb-3" id="extUpgradeGroup" style="display:none">
+                                <label class="form-label">Erweiterung</label>
+                                <select name="wache_upgrade_id" class="form-select" required id="extUpgradeSelect"></select>
+                            </div>
+                            <div class="mb-2" id="extCostDisplay" style="display:none">
+                                <span class="fw-bold">Kosten: <span id="extCostVal"></span> €</span>
+                                <br><small class="text-muted">Zusätzliche Stellplätze: +<span id="extExtraSlots"></span></small>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Notizen (optional)</label>
+                                <textarea name="notes" class="form-control" rows="1"></textarea>
+                            </div>
+                            <button type="submit" class="btn btn-primary" id="extSubmitBtn" disabled><i class="bi bi-plus-lg me-1"></i>Zum Planer hinzufügen</button>
+                        </form>
+                    </div>
+                    <div class="tab-pane fade" id="wacheAusbauen">
+                        <form method="post" action="/planner/add/wache_upgrade" id="formWacheUpgrade" data-async="1">
+                            <div class="mb-3">
+                                <label class="form-label">Wache</label>
+                                <select name="target_wache_ref" class="form-select" required id="upgradeWacheSelect">
+                                    <option value="">— wählen —</option>
+                                    <option disabled>— aktive Wachen —</option>
+                                    {% for w in planner_wachen if w.kind == 'real' %}
+                                    <option value="{{ w.ref }}">{{ w.name }} ({{ w.wache_type.name }}, Stufe {{ w.current_level }})</option>
+                                    {% endfor %}
+                                    <option disabled>— geplante Wachen —</option>
+                                    {% for w in planner_wachen if w.kind == 'planned' %}
+                                    <option value="{{ w.ref }}">{{ w.name }} ({{ w.wache_type.name }}, geplant)</option>
+                                    {% endfor %}
+                                </select>
+                                <small class="text-muted d-block mt-1">Du kannst auch auf eine noch nicht erledigte Wache aus dem Planer ausbauen.</small>
+                            </div>
+                            <div class="mb-3" id="upgradeLevelGroup" style="display:none">
+                                <label class="form-label">Ziel-Stufe</label>
+                                <select name="target_level" class="form-select" required id="upgradeLevelSelect"></select>
+                            </div>
+                            <small class="text-muted d-block mb-2" id="upgradeCurrentInfo" style="display:none"></small>
+                            <div class="mb-2" id="upgradeCost" style="display:none">
+                                <span class="fw-bold">Kosten: <span id="upgradeCostVal"></span> €</span>
+                                <br><small class="text-muted" id="upgradeCapacity"></small>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Notizen (optional)</label>
+                                <textarea name="notes" class="form-control" rows="1"></textarea>
+                            </div>
+                            <button type="submit" class="btn btn-primary"><i class="bi bi-plus-lg me-1"></i>Zum Planer hinzufügen</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="addVehicleModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <form method="post" action="/planner/add/vehicle" class="modal-content" id="formVehicle" data-async="1">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-truck me-2"></i>Fahrzeug kaufen</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label">Fahrzeugtyp</label>
+                        <select name="vehicle_type_id" class="form-select" required id="vehicleTypeSelect">
+                            <option value="">— wählen —</option>
+                            {% set standards = vehicle_types | selectattr('is_standard') | list %}
+                            {% set others = vehicle_types | rejectattr('is_standard') | list %}
+                            {% if standards %}
+                            <optgroup label="Standards">
+                                {% for vt in standards %}
+                                <option value="{{ vt.id }}" data-price="{{ vt.base_price }}" data-abbr="{{ vt.abbreviation or '' }}">
+                                    {{ vt.name }} ({{ '{:,.0f}'.format(vt.base_price).replace(',', '.') }} €){% if not vt.abbreviation %} ⚠{% endif %}
+                                </option>
+                                {% endfor %}
+                            </optgroup>
+                            {% endif %}
+                            {% if others %}
+                            <optgroup label="Andere">
+                                {% for vt in others %}
+                                <option value="{{ vt.id }}" data-price="{{ vt.base_price }}" data-abbr="{{ vt.abbreviation or '' }}">
+                                    {{ vt.name }} ({{ '{:,.0f}'.format(vt.base_price).replace(',', '.') }} €){% if not vt.abbreviation %} ⚠{% endif %}
+                                </option>
+                                {% endfor %}
+                            </optgroup>
+                            {% endif %}
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Zuweisen an Wache</label>
+                        <select name="vehicle_wache_ref" class="form-select" id="vehicleWacheSelect">
+                            <option value="" data-org="" data-loc="" data-no-loc="0">— keine (später zuweisen) —</option>
+                            <option disabled>— aktive Wachen —</option>
+                            {% for w in planner_wachen if w.kind == 'real' %}
+                            {% set lvl_obj = namespace(max=0) %}
+                            {% for l in w.wache_type.levels if l.level_number == w.current_level %}
+                            {% set lvl_obj.max = l.max_vehicles %}
+                            {% endfor %}
+                            <option value="{{ w.ref }}" data-org="{{ w.org_type.abbreviation if w.org_type else '' }}" data-name="{{ w.name }}" data-loc="{{ w.location.abbreviation if w.location else '' }}" data-no-loc="{{ '1' if (w.org_type and w.org_type.no_location) else '0' }}">
+                                {{ w.name }} ({{ w.vehicles|length }}/{{ lvl_obj.max }} Fzg.){% if not w.org_type %} ⚠{% endif %}
+                            </option>
+                            {% endfor %}
+                            <option disabled>— geplante Wachen —</option>
+                            {% for w in planner_wachen if w.kind == 'planned' %}
+                            <option value="{{ w.ref }}" data-org="{{ w.name }}" data-name="{{ w.name }}" data-loc="" data-no-loc="1">
+                                {{ w.name }} (0/{{ w.max_vehicles }} Fzg., geplant)
+                            </option>
+                            {% endfor %}
+                        </select>
+                        <small class="text-muted d-block mt-1">Auch geplante Wachen aus dem Planer können hier ausgewählt werden.</small>
+                    </div>
+                </div>
+
+                <div class="mt-3 p-3 border rounded bg-light" id="namingBox">
+                    <div class="d-flex align-items-center gap-2 mb-2">
+                        <strong><i class="bi bi-tag me-1"></i>Rufname</strong>
+                        <span class="badge bg-primary fs-6" id="namingPreview">—</span>
+                        <button type="button" class="btn btn-sm btn-outline-secondary ms-auto" id="vehGenBtn">
+                            <i class="bi bi-magic me-1"></i>Übernehmen
+                        </button>
+                    </div>
+                    <div class="row g-2">
+                        <div class="col-3">
+                            <label class="form-label small mb-1">Org-Typ</label>
+                            <input type="text" class="form-control form-control-sm" id="vehNamingOrg" placeholder="z.B. FF" maxlength="20">
+                        </div>
+                        <div class="col-3" id="vehNamingLocDiv">
+                            <label class="form-label small mb-1">Standort</label>
+                            <input type="text" class="form-control form-control-sm" id="vehNamingLoc" placeholder="z.B. RIC" maxlength="20">
+                        </div>
+                        <div class="col-3">
+                            <label class="form-label small mb-1">Kürzel</label>
+                            <input type="text" class="form-control form-control-sm" id="vehNamingAbbr" placeholder="z.B. HLF" maxlength="20">
+                        </div>
+                        <div class="col-3">
+                            <label class="form-label small mb-1">Nr.</label>
+                            <input type="number" class="form-control form-control-sm" id="vehNamingNr" min="1" placeholder="1">
+                        </div>
+                    </div>
+                    <div id="namingHints" class="mt-2"></div>
+                    <div class="mt-2">
+                        <input type="text" name="vehicle_nickname" class="form-control" id="vehicleNickname" placeholder="Generierter oder manueller Rufname">
+                    </div>
+                </div>
+
+                <div class="mt-3" id="vehicleModulesGroup" style="display:none">
+                    <label class="form-label fw-bold">Module</label>
+                    <div id="vehicleModulesList" class="row g-2"></div>
+                </div>
+                <div class="mt-3" id="vehicleCostDisplay" style="display:none">
+                    <span class="fw-bold fs-5">Gesamtkosten: <span id="vehicleCostVal">0</span> €</span>
+                </div>
+                <div class="mt-3">
+                    <label class="form-label">Anzahl</label>
+                    <input type="number" class="form-control" name="quantity" id="vehicleQuantity" min="1" max="100" value="1">
+                    <small class="text-muted">Damit kannst du z.B. 4x TLF in einem Schritt einplanen.</small>
+                </div>
+                <div class="mt-3">
+                    <label class="form-label">Notizen (optional)</label>
+                    <textarea name="notes" class="form-control" rows="1"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Abbrechen</button>
+                <button type="submit" class="btn btn-primary"><i class="bi bi-plus-lg me-1"></i>Zum Planer hinzufügen</button>
+            </div>
+        </form>
+    </div>
+</div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function initPlannerPage() {
+    const pageRoot = document.getElementById('plannerPageRoot');
+    if (!pageRoot) {
+        return;
+    }
+    const collapseStorageKey = 'planner-collapse-state';
+
+    function readCollapseState() {
+        try {
+            return JSON.parse(localStorage.getItem(collapseStorageKey) || '{}');
+        } catch (error) {
+            return {};
+        }
+    }
+
+    function writeCollapseState(state) {
+        localStorage.setItem(collapseStorageKey, JSON.stringify(state));
+    }
+
+    document.querySelectorAll('.accordion-collapse[id]').forEach(function(collapseEl) {
+        collapseEl.addEventListener('shown.bs.collapse', function() {
+            const state = readCollapseState();
+            state[collapseEl.id] = true;
+            writeCollapseState(state);
+        });
+        collapseEl.addEventListener('hidden.bs.collapse', function() {
+            const state = readCollapseState();
+            state[collapseEl.id] = false;
+            writeCollapseState(state);
+        });
+    });
+
+    const savedState = readCollapseState();
+    document.querySelectorAll('.accordion-collapse[id]').forEach(function(collapseEl) {
+        if (!(collapseEl.id in savedState)) {
+            return;
+        }
+        const shouldShow = !!savedState[collapseEl.id];
+        collapseEl.classList.toggle('show', shouldShow);
+        const button = document.querySelector('[data-bs-target="#' + collapseEl.id + '"]');
+        if (button) {
+            button.classList.toggle('collapsed', !shouldShow);
+            button.setAttribute('aria-expanded', shouldShow ? 'true' : 'false');
+        }
+    });
+
+    document.querySelectorAll('.section-items').forEach(function(planList) {
+        Sortable.create(planList, {
+            handle: '.drag-handle',
+            group: 'planner-items',
+            animation: 150,
+            onEnd: function() {
+                const order = [];
+                document.querySelectorAll('.planner-section').forEach(function(sectionEl) {
+                    const dividerId = sectionEl.dataset.dividerId;
+                    if (dividerId) {
+                        order.push(dividerId);
+                    }
+                    sectionEl.querySelectorAll('.section-items tr[data-id]').forEach(function(row) {
+                        order.push(row.dataset.id);
+                    });
+                });
+                fetch('/planner/reorder', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(order)
+                }).then(function() {
+                    window.location.reload();
+                });
+            }
+        });
+    });
+
+    const wacheBuyType = document.getElementById('wacheBuyType');
+    if (wacheBuyType) {
+        wacheBuyType.addEventListener('change', function() {
+            const opt = this.options[this.selectedIndex];
+            const costDiv = document.getElementById('wacheBuyCost');
+            if (opt && opt.value) {
+                const cost = parseFloat(opt.dataset.cost || 0);
+                document.getElementById('wacheBuyCostVal').textContent = cost.toLocaleString('de-DE');
+                document.getElementById('wacheBuyMaxVeh').textContent = opt.dataset.maxVehicles || '0';
+                costDiv.style.display = '';
+            } else {
+                costDiv.style.display = 'none';
+            }
+        });
+    }
+
+    const upgradeWache = document.getElementById('upgradeWacheSelect');
+    if (upgradeWache) {
+        upgradeWache.addEventListener('change', function() {
+            const wid = this.value;
+            const lvlGroup = document.getElementById('upgradeLevelGroup');
+            const lvlSelect = document.getElementById('upgradeLevelSelect');
+            const costDiv = document.getElementById('upgradeCost');
+            if (!wid) {
+                lvlGroup.style.display = 'none';
+                costDiv.style.display = 'none';
+                return;
+            }
+            fetch('/planner/api/wache_levels/' + wid)
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    lvlSelect.innerHTML = '<option value="">— wählen —</option>';
+                    data.levels.forEach(function(level) {
+                        const option = document.createElement('option');
+                        option.value = level.number;
+                        option.textContent = level.name + ' (' + level.cost.toLocaleString('de-DE') + ' €, max. ' + level.max_vehicles + ' Fzg.)';
+                        option.dataset.cost = level.cost;
+                        option.dataset.maxVehicles = level.max_vehicles;
+                        lvlSelect.appendChild(option);
+                    });
+                    const infoEl = document.getElementById('upgradeCurrentInfo');
+                    infoEl.textContent = 'Aktuell ' + data.current_vehicles + ' Fahrzeug(e) in dieser Wache';
+                    infoEl.style.display = '';
+                    lvlGroup.style.display = '';
+                    costDiv.style.display = 'none';
+                });
+        });
+
+        document.getElementById('upgradeLevelSelect').addEventListener('change', function() {
+            const opt = this.options[this.selectedIndex];
+            const costDiv = document.getElementById('upgradeCost');
+            if (opt && opt.value) {
+                const cost = parseFloat(opt.dataset.cost || 0);
+                const maxVehicles = parseInt(opt.dataset.maxVehicles || 0, 10);
+                document.getElementById('upgradeCostVal').textContent = cost.toLocaleString('de-DE');
+                document.getElementById('upgradeCapacity').textContent = 'Max. Fahrzeuge: ' + maxVehicles;
+                costDiv.style.display = '';
+            } else {
+                costDiv.style.display = 'none';
+            }
+        });
+    }
+
+    const extWache = document.getElementById('extWacheSelect');
+    if (extWache) {
+        extWache.addEventListener('change', function() {
+            const wid = this.value;
+            const ugGroup = document.getElementById('extUpgradeGroup');
+            const ugSelect = document.getElementById('extUpgradeSelect');
+            const costDiv = document.getElementById('extCostDisplay');
+            const submitBtn = document.getElementById('extSubmitBtn');
+            submitBtn.disabled = true;
+            if (!wid) {
+                ugGroup.style.display = 'none';
+                costDiv.style.display = 'none';
+                return;
+            }
+            fetch('/planner/api/wache_upgrades/' + wid)
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    ugSelect.innerHTML = '<option value="">— wählen —</option>';
+                    if (data.upgrades.length === 0) {
+                        ugSelect.innerHTML = '<option value="">Keine Erweiterungen verfügbar</option>';
+                        ugGroup.style.display = '';
+                        costDiv.style.display = 'none';
+                        return;
+                    }
+                    data.upgrades.forEach(function(upgrade) {
+                        const option = document.createElement('option');
+                        option.value = upgrade.id;
+                        option.textContent = upgrade.name + ' (+' + upgrade.extra_slots + ' Stellpl., ' + upgrade.cost.toLocaleString('de-DE') + ' €)';
+                        option.dataset.cost = upgrade.cost;
+                        option.dataset.extraSlots = upgrade.extra_slots;
+                        ugSelect.appendChild(option);
+                    });
+                    ugGroup.style.display = '';
+                    costDiv.style.display = 'none';
+                });
+        });
+
+        document.getElementById('extUpgradeSelect').addEventListener('change', function() {
+            const opt = this.options[this.selectedIndex];
+            const costDiv = document.getElementById('extCostDisplay');
+            const submitBtn = document.getElementById('extSubmitBtn');
+            if (opt && opt.value) {
+                document.getElementById('extCostVal').textContent = parseFloat(opt.dataset.cost || 0).toLocaleString('de-DE');
+                document.getElementById('extExtraSlots').textContent = opt.dataset.extraSlots || '0';
+                costDiv.style.display = '';
+                submitBtn.disabled = false;
+            } else {
+                costDiv.style.display = 'none';
+                submitBtn.disabled = true;
+            }
+        });
+    }
+
+    let basePrice = 0;
+    function updateVehicleCost() {
+        const qtyEl = document.getElementById('vehicleQuantity');
+        const qty = Math.max(1, parseInt(qtyEl ? qtyEl.value : '1', 10) || 1);
+        let total = basePrice;
+        document.querySelectorAll('.vehicle-mod-check:checked').forEach(function(checkbox) {
+            total += parseFloat(checkbox.dataset.price || 0);
+        });
+        total *= qty;
+        const el = document.getElementById('vehicleCostVal');
+        if (el) el.textContent = total.toLocaleString('de-DE');
+    }
+
+    const wacheVehCounts = {{ wache_veh_counts_json | default({}, true) | tojson }};
+    const vehicleTypeSelect = document.getElementById('vehicleTypeSelect');
+    const vehicleWacheSelect = document.getElementById('vehicleWacheSelect');
+    const vehNamingOrg = document.getElementById('vehNamingOrg');
+    const vehNamingLoc = document.getElementById('vehNamingLoc');
+    const vehNamingLocDiv = document.getElementById('vehNamingLocDiv');
+    const vehNamingAbbr = document.getElementById('vehNamingAbbr');
+    const vehNamingNr = document.getElementById('vehNamingNr');
+    const namingPreview = document.getElementById('namingPreview');
+    const namingHints = document.getElementById('namingHints');
+    const vehicleNickname = document.getElementById('vehicleNickname');
+
+    function buildVehicleName() {
+        const org = vehNamingOrg ? vehNamingOrg.value.trim() : '';
+        const loc = vehNamingLoc ? vehNamingLoc.value.trim() : '';
+        const abbr = vehNamingAbbr ? vehNamingAbbr.value.trim() : '';
+        const nr = vehNamingNr ? vehNamingNr.value.trim() : '';
+        const noLoc = vehNamingLocDiv && vehNamingLocDiv.style.display === 'none';
+        const parts = [];
+        if (org) parts.push(org);
+        if (!noLoc && loc) parts.push(loc);
+        if (abbr || nr) parts.push(abbr + (nr || ''));
+        return parts.join('-');
+    }
+
+    function updateNamingPreview() {
+        if (namingPreview) namingPreview.textContent = buildVehicleName() || '—';
+    }
+
+    function syncNamingFromSelects() {
+        if (!vehicleTypeSelect || !vehicleWacheSelect) return;
+        const wOpt = vehicleWacheSelect.options[vehicleWacheSelect.selectedIndex];
+        const tOpt = vehicleTypeSelect.options[vehicleTypeSelect.selectedIndex];
+        const org = wOpt ? (wOpt.dataset.org || '') : '';
+        const wacheName = wOpt ? (wOpt.dataset.name || '') : '';
+        const loc = wOpt ? (wOpt.dataset.loc || '') : '';
+        const noLoc = wOpt ? (wOpt.dataset.noLoc === '1') : false;
+        const abbr = tOpt ? (tOpt.dataset.abbr || '') : '';
+        const orgDisplay = (noLoc && wacheName) ? wacheName : org;
+        if (vehNamingOrg && orgDisplay) vehNamingOrg.value = orgDisplay;
+        if (vehNamingLoc && !noLoc) vehNamingLoc.value = loc;
+        if (vehNamingAbbr && abbr) vehNamingAbbr.value = abbr;
+        if (vehNamingLocDiv) vehNamingLocDiv.style.display = noLoc ? 'none' : '';
+        if (noLoc && vehNamingLoc) vehNamingLoc.value = '';
+        if (vehNamingNr && vehicleWacheSelect.value && vehicleTypeSelect.value) {
+            const counts = wacheVehCounts[vehicleWacheSelect.value] || {};
+            vehNamingNr.value = (parseInt(counts[vehicleTypeSelect.value] || 0, 10) || 0) + 1;
+        }
+        if (namingHints) {
+            const hints = [];
+            if (!org) hints.push('<a href="/fleet" target="_blank">Org-Typ an der Wache hinterlegen</a>');
+            if (!noLoc && !loc) hints.push('<a href="/fleet" target="_blank">Standort an der Wache hinterlegen</a>');
+            if (!abbr) hints.push('<a href="/vehicles" target="_blank">Kürzel am Fahrzeugtyp hinterlegen</a>');
+            namingHints.innerHTML = hints.length
+                ? '<small class="text-warning"><i class="bi bi-exclamation-triangle me-1"></i>' + hints.join(' · ') + '</small>'
+                : '';
+        }
+        updateNamingPreview();
+    }
+
+    function renderVehicleModules(modules) {
+        const list = document.getElementById('vehicleModulesList');
+        const group = document.getElementById('vehicleModulesGroup');
+        const costDisplay = document.getElementById('vehicleCostDisplay');
+        if (!list || !group || !costDisplay) return;
+        list.innerHTML = '';
+        if (!modules.length) {
+            group.style.display = 'none';
+            costDisplay.style.display = '';
+            updateVehicleCost();
+            return;
+        }
+        modules.forEach(function(module) {
+            const col = document.createElement('div');
+            col.className = 'col-md-6';
+            const checked = module.is_standard ? ' checked' : '';
+            col.innerHTML = '<div class="form-check">'
+                + '<input class="form-check-input vehicle-mod-check" type="checkbox" name="module_ids" value="' + module.id + '" id="vmod-' + module.id + '" data-price="' + module.price + '"' + checked + '>'
+                + '<label class="form-check-label" for="vmod-' + module.id + '">' + module.name + ' <small class="text-muted">(' + Number(module.price).toLocaleString('de-DE') + ' €)</small></label>'
+                + '</div>';
+            list.appendChild(col);
+        });
+        group.style.display = '';
+        costDisplay.style.display = '';
+        document.querySelectorAll('.vehicle-mod-check').forEach(function(checkbox) {
+            checkbox.addEventListener('change', updateVehicleCost);
+        });
+        updateVehicleCost();
+    }
+
+    if (vehicleTypeSelect) {
+        vehicleTypeSelect.addEventListener('change', function() {
+            const opt = this.options[this.selectedIndex];
+            basePrice = parseFloat(opt ? (opt.dataset.price || 0) : 0);
+            if (!this.value) {
+                const group = document.getElementById('vehicleModulesGroup');
+                const costDisplay = document.getElementById('vehicleCostDisplay');
+                const list = document.getElementById('vehicleModulesList');
+                if (group) group.style.display = 'none';
+                if (costDisplay) costDisplay.style.display = 'none';
+                if (list) list.innerHTML = '';
+                updateVehicleCost();
+                syncNamingFromSelects();
+                return;
+            }
+            fetch('/planner/api/vehicle_modules/' + this.value)
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    basePrice = parseFloat(data.base_price || 0);
+                    renderVehicleModules(data.modules || []);
+                    syncNamingFromSelects();
+                });
+        });
+        vehicleTypeSelect.addEventListener('change', syncNamingFromSelects);
+    }
+
+    if (vehicleWacheSelect) {
+        vehicleWacheSelect.addEventListener('change', syncNamingFromSelects);
+    }
+
+    const vehicleQuantity = document.getElementById('vehicleQuantity');
+    if (vehicleQuantity) {
+        vehicleQuantity.addEventListener('input', updateVehicleCost);
+    }
+
+    [vehNamingOrg, vehNamingLoc, vehNamingAbbr, vehNamingNr].forEach(function(el) {
+        if (el) el.addEventListener('input', updateNamingPreview);
+    });
+
+    const vehGenBtn = document.getElementById('vehGenBtn');
+    if (vehGenBtn) {
+        vehGenBtn.addEventListener('click', function() {
+            const name = buildVehicleName();
+            if (name && vehicleNickname) vehicleNickname.value = name;
+        });
+    }
+
+    const formVehicle = document.getElementById('formVehicle');
+    if (formVehicle) {
+        formVehicle.addEventListener('submit', function() {
+            if (vehicleNickname && !vehicleNickname.value.trim()) {
+                const name = buildVehicleName();
+                if (name) vehicleNickname.value = name;
+            }
+        });
+    }
+
+    window.toggleNicknameEdit = function(id) {
+        const form = document.getElementById('nicknameForm' + id);
+        if (form) {
+            form.classList.toggle('d-none');
+            if (!form.classList.contains('d-none')) form.querySelector('input').focus();
+        }
+    };
+
+    const orgWacheNext = {{ org_wache_next_json | default({}, true) | tojson }};
+    const wacheBuyOrg = document.getElementById('wacheBuyOrg');
+    const wacheBuyLoc = document.getElementById('wacheBuyLoc');
+    const wacheBuyNr = document.getElementById('wacheBuyNr');
+    const wacheBuyLocDiv = document.getElementById('wacheBuyLocDiv');
+    const wacheBuyNrDiv = document.getElementById('wacheBuyNrDiv');
+    const wacheBuyName = document.getElementById('wacheBuyName');
+    const wacheBuyGenBtn = document.getElementById('wacheBuyGenBtn');
+
+    function applyNoLocWache() {
+        if (!wacheBuyOrg) return;
+        const opt = wacheBuyOrg.options[wacheBuyOrg.selectedIndex];
+        const noLoc = opt && opt.dataset.noLocation === '1';
+        if (wacheBuyLocDiv) wacheBuyLocDiv.style.display = noLoc ? 'none' : '';
+        if (wacheBuyNrDiv) wacheBuyNrDiv.style.display = noLoc ? '' : 'none';
+        if (noLoc && wacheBuyNr && opt.value) {
+            wacheBuyNr.value = orgWacheNext[opt.value] || 1;
+        }
+    }
+
+    function generateWacheName() {
+        if (!wacheBuyOrg) return '';
+        const opt = wacheBuyOrg.options[wacheBuyOrg.selectedIndex];
+        const org = opt ? opt.value : '';
+        const noLoc = opt && opt.dataset.noLocation === '1';
+        const nr = (wacheBuyNr && noLoc) ? wacheBuyNr.value.trim() : '';
+        const loc = (wacheBuyLoc && !noLoc) ? wacheBuyLoc.value.trim() : '';
+        if (noLoc && nr) return org + nr;
+        const parts = [];
+        if (org) parts.push(org);
+        if (loc) parts.push(loc);
+        return parts.join('-');
+    }
+
+    if (wacheBuyOrg) {
+        wacheBuyOrg.addEventListener('change', applyNoLocWache);
+        applyNoLocWache();
+    }
+
+    if (wacheBuyGenBtn) {
+        wacheBuyGenBtn.addEventListener('click', function() {
+            const name = generateWacheName();
+            if (name && wacheBuyName) wacheBuyName.value = name;
+        });
+    }
+}
+
+document.addEventListener('DOMContentLoaded', initPlannerPage);
+document.addEventListener('app:content-updated', initPlannerPage);
+</script>
+{% endblock %}

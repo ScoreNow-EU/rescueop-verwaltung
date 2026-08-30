@@ -1,0 +1,339 @@
+{% extends "base.html" %}
+{% block content %}
+<div id="fleetPageRoot" data-async-root="1">
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h2><i class="bi bi-house-gear me-2"></i>Mein Fuhrpark</h2>
+    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addWacheModal">
+        <i class="bi bi-plus-lg me-1"></i>Neue Wache
+    </button>
+</div>
+
+{% if not wache_types %}
+<div class="alert alert-warning">
+    Bitte zuerst einen <a href="/wachen">Wachen-Typ</a> anlegen, bevor du eine Wache erstellen kannst.
+</div>
+{% endif %}
+
+<div class="row">
+    <!-- Left: Wachen list -->
+    <div class="col-md-3">
+        <div class="list-group">
+            {% for w in wachen %}
+            <a href="/fleet?wache={{ w.id }}"
+               class="list-group-item list-group-item-action d-flex justify-content-between align-items-center
+                      {% if selected and selected.id == w.id %}active{% endif %}">
+                <div>
+                    <strong>{{ w.name }}</strong><br>
+                    <small>{{ w.wache_type.name }} — Stufe {{ w.current_level }}{% if w.org_type %} · {{ w.org_type.abbreviation }}{% endif %}{% if w.location %}-{{ w.location.abbreviation }}{% endif %}</small>
+                </div>
+                <span class="badge bg-primary rounded-pill">{{ w.vehicles|length }}</span>
+            </a>
+            {% endfor %}
+            {% if not wachen %}
+            <div class="list-group-item text-muted">Keine Wachen vorhanden.</div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Right: Selected Wache details -->
+    <div class="col-md-9">
+        {% if selected %}
+        <div class="card mb-3">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <div>
+                    {% if selected.wache_type.image %}
+                    <img src="/assets/wachen/{{ selected.wache_type.image }}" class="vehicle-thumb me-2">
+                    {% endif %}
+                    <strong>{{ selected.name }}</strong>
+                    <span class="badge bg-info ms-2">{{ selected.wache_type.name }}</span>
+                    <span class="badge bg-success ms-1">Stufe {{ selected.current_level }}
+                        {% set max_lvl = selected.wache_type.levels|length %}
+                        / {{ max_lvl }}
+                    </span>
+                    {% if selected.org_type %}
+                    <span class="badge bg-secondary ms-1">Org: {{ selected.org_type.abbreviation }}</span>
+                    {% endif %}
+                    {% if selected.location %}
+                    <span class="badge bg-secondary ms-1">Ort: {{ selected.location.abbreviation }}</span>
+                    {% endif %}
+                </div>
+                <div class="d-flex gap-1">
+                    <form method="post" action="/fleet/wache/{{ selected.id }}/downgrade" data-async="1">
+                        <button class="btn btn-sm btn-outline-warning" {% if selected.current_level <= 0 %}disabled{% endif %}>
+                            <i class="bi bi-arrow-down"></i>
+                        </button>
+                    </form>
+                    <form method="post" action="/fleet/wache/{{ selected.id }}/upgrade" data-async="1">
+                        <button class="btn btn-sm btn-outline-success" {% if selected.current_level >= max_lvl %}disabled{% endif %}>
+                            <i class="bi bi-arrow-up"></i> Ausbauen
+                        </button>
+                    </form>
+                                            <form method="post" action="/fleet/wache/{{ selected.id }}/delete" data-async="1" data-confirm-msg="Wache &quot;{{ selected.name }}&quot; wirklich löschen?">
+                        <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+                    </form>
+                </div>
+            </div>
+            <div class="card-body">
+                <!-- Edit Wache name -->
+                <form method="post" action="/fleet/wache/{{ selected.id }}/edit" class="row g-2 mb-3 align-items-end" data-async="1">
+                    <div class="col-auto">
+                        <label class="form-label">Name</label>
+                        <input type="text" name="name" class="form-control form-control-sm" value="{{ selected.name }}">
+                    </div>
+                    <div class="col-auto">
+                        <label class="form-label">Org-Typ</label>
+                        <select name="naming_org_type_id" class="form-select form-select-sm">
+                            <option value="">— keiner —</option>
+                            {% for o in org_types %}
+                            <option value="{{ o.id }}" {% if selected.naming_org_type_id == o.id %}selected{% endif %}>{{ o.abbreviation }} — {{ o.full_name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-auto">
+                        <label class="form-label">Standort</label>
+                        <select name="naming_location_id" class="form-select form-select-sm">
+                            <option value="">— keiner —</option>
+                            {% for l in locations %}
+                            <option value="{{ l.id }}" {% if selected.naming_location_id == l.id %}selected{% endif %}>{{ l.abbreviation }} — {{ l.full_name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-auto">
+                        <button type="submit" class="btn btn-sm btn-outline-primary"><i class="bi bi-check-lg"></i></button>
+                    </div>
+                </form>
+
+                <!-- Level info -->
+                {% if selected.wache_type.levels %}
+                <h6>Ausbaustufen</h6>
+                <div class="mb-3">
+                    {% for lvl in selected.wache_type.levels %}
+                    <span class="badge {{ 'bg-success' if lvl.level_number <= selected.current_level else 'bg-secondary' }} me-1">
+                        Stufe {{ lvl.level_number }}{% if lvl.name %}: {{ lvl.name }}{% endif %}
+                        ({{ '{:,.0f}'.format(lvl.cost).replace(',', '.') }} €)
+                    </span>
+                    {% endfor %}
+                </div>
+                {% endif %}
+
+                <!-- Wache Upgrades -->
+                {% if selected.wache_type.upgrades %}
+                <h6>Erweiterungen <small class="text-muted">(Stellplätze: <span id="effectiveSlotsVal">{{ selected.effective_max_vehicles }}</span>)</small></h6>
+                <div class="mb-3">
+                    {% for upg in selected.wache_type.upgrades %}
+                    <button type="button" class="btn btn-sm mb-1 wache-upgrade-toggle
+                        {{ 'btn-success' if upg in selected.installed_upgrades else 'btn-outline-secondary' }}"
+                        data-url="/fleet/wache/{{ selected.id }}/toggle_upgrade/{{ upg.id }}"
+                        data-upg-label="{{ upg.name }} (+{{ upg.extra_slots }} Stellpl., {{ '{:,.0f}'.format(upg.cost).replace(',', '.') }} €)">
+                        {% if upg in selected.installed_upgrades %}<i class="bi bi-check-circle-fill me-1"></i>{% endif %}
+                        {{ upg.name }} (+{{ upg.extra_slots }} Stellpl., {{ '{:,.0f}'.format(upg.cost).replace(',', '.') }} €)
+                    </button>
+                    {% endfor %}
+                </div>
+                {% endif %}
+
+                <!-- Vehicles -->
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <h5 class="mb-0">Fahrzeuge</h5>
+                    <button class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#addVehicleModal">
+                        <i class="bi bi-plus-lg me-1"></i>Fahrzeug hinzufügen
+                    </button>
+                </div>
+
+                {% if selected.vehicles %}
+                <div class="row g-3">
+                    {% for v in selected.vehicles %}
+                    <div class="col-md-6 col-lg-4">
+                        <div class="card h-100 vehicle-card">
+                            <div class="card-body">
+                                <div class="d-flex align-items-center mb-2">
+                                    {% if v.vehicle_type.image %}
+                                    <img src="/assets/vehicles/{{ v.vehicle_type.image }}" class="vehicle-thumb me-2">
+                                    {% endif %}
+                                    <div>
+                                        <strong>{{ v.vehicle_type.name }}</strong>
+                                        {% if v.nickname %}<br><small class="text-muted">{{ v.nickname }}</small>{% endif %}
+                                    </div>
+                                </div>
+                                <div class="mb-2">
+                                    <small class="text-muted">Grundpreis: {{ '{:,.0f}'.format(v.vehicle_type.base_price).replace(',', '.') }} €</small>
+                                </div>
+
+                                <!-- Modules toggle (AJAX) -->
+                                {% if v.vehicle_type.modules %}
+                                <h6 class="mt-2">Module</h6>
+                                {% for mod in v.vehicle_type.modules %}
+                                <button type="button" class="btn btn-sm mb-1 module-toggle
+                                    {{ 'btn-success' if mod in v.installed_modules else 'btn-outline-secondary' }}"
+                                    data-url="/fleet/vehicle/{{ v.id }}/toggle_module/{{ mod.id }}"
+                                    data-mod-name="{{ mod.name }}"
+                                    data-mod-price="{{ '{:,.0f}'.format(mod.price).replace(',', '.') }}">
+                                    {% if mod in v.installed_modules %}<i class="bi bi-check-circle-fill me-1"></i>{% endif %}
+                                    {{ mod.name }} ({{ '{:,.0f}'.format(mod.price).replace(',', '.') }} €)
+                                </button>
+                                {% endfor %}
+                                {% endif %}
+
+                                <div class="mt-2 d-flex gap-1">
+                                    <form method="post" action="/fleet/vehicle/{{ v.id }}/edit" class="d-flex gap-1" data-async="1">
+                                        <input type="text" name="nickname" class="form-control form-control-sm" value="{{ v.nickname or '' }}" placeholder="Rufname">
+                                        <button type="submit" class="btn btn-sm btn-outline-primary"><i class="bi bi-check-lg"></i></button>
+                                    </form>
+                                    <form method="post" action="/fleet/vehicle/{{ v.id }}/delete" data-async="1" data-confirm-msg="Fahrzeug wirklich löschen?">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <p class="text-muted">Noch keine Fahrzeuge zugewiesen.</p>
+                {% endif %}
+            </div>
+        </div>
+        {% elif wachen %}
+        <div class="alert alert-info">Wähle links eine Wache aus.</div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Add Wache Modal -->
+<div class="modal fade" id="addWacheModal" tabindex="-1">
+    <div class="modal-dialog">
+        <form method="post" action="/fleet/wache/add" class="modal-content" data-async="1">
+            <div class="modal-header">
+                <h5 class="modal-title">Neue Wache</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">Name</label>
+                    <input type="text" name="name" class="form-control" required autofocus>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Wachen-Typ</label>
+                    <select name="wache_type_id" class="form-select" required>
+                        {% for wt in wache_types %}
+                        <option value="{{ wt.id }}">{{ wt.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Org-Typ</label>
+                    <select name="naming_org_type_id" class="form-select">
+                        <option value="">— keiner —</option>
+                        {% for o in org_types %}
+                        <option value="{{ o.id }}">{{ o.abbreviation }} — {{ o.full_name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Standort</label>
+                    <select name="naming_location_id" class="form-select">
+                        <option value="">— keiner —</option>
+                        {% for l in locations %}
+                        <option value="{{ l.id }}">{{ l.abbreviation }} — {{ l.full_name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Abbrechen</button>
+                <button type="submit" class="btn btn-primary"><i class="bi bi-plus-lg me-1"></i>Erstellen</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Add Vehicle Modal -->
+{% if selected %}
+<div class="modal fade" id="addVehicleModal" tabindex="-1">
+    <div class="modal-dialog">
+        <form method="post" action="/fleet/wache/{{ selected.id }}/vehicle/add" class="modal-content" data-async="1">
+            <div class="modal-header">
+                <h5 class="modal-title">Fahrzeug zu „{{ selected.name }}" hinzufügen</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">Fahrzeugtyp</label>
+                    <select name="vehicle_type_id" class="form-select" required>
+                        {% for vt in vehicle_types %}
+                        <option value="{{ vt.id }}">{{ vt.name }} ({{ '{:,.0f}'.format(vt.base_price).replace(',', '.') }} €)</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Rufname (optional)</label>
+                    <input type="text" name="nickname" class="form-control">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Abbrechen</button>
+                <button type="submit" class="btn btn-primary"><i class="bi bi-plus-lg me-1"></i>Hinzufügen</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    document.addEventListener('click', function(event) {
+        const moduleBtn = event.target.closest('.module-toggle');
+        if (moduleBtn) {
+            const url = moduleBtn.dataset.url;
+            const modName = moduleBtn.dataset.modName;
+            const modPrice = moduleBtn.dataset.modPrice;
+            moduleBtn.disabled = true;
+            fetch(url, {method: 'POST'})
+                .then(r => r.json())
+                .then(data => {
+                    if (data.installed) {
+                        moduleBtn.className = 'btn btn-sm mb-1 module-toggle btn-success';
+                        moduleBtn.innerHTML = '<i class="bi bi-check-circle-fill me-1"></i>' + modName + ' (' + modPrice + ' €)';
+                    } else {
+                        moduleBtn.className = 'btn btn-sm mb-1 module-toggle btn-outline-secondary';
+                        moduleBtn.innerHTML = modName + ' (' + modPrice + ' €)';
+                    }
+                })
+                .catch(() => { window.location.reload(); })
+                .finally(() => { moduleBtn.disabled = false; });
+            return;
+        }
+
+        const upgradeBtn = event.target.closest('.wache-upgrade-toggle');
+        if (!upgradeBtn) {
+            return;
+        }
+        const url = upgradeBtn.dataset.url;
+        upgradeBtn.disabled = true;
+        fetch(url, {method: 'POST'})
+            .then(r => r.json())
+            .then(data => {
+                const label = upgradeBtn.dataset.upgLabel || '';
+                if (data.installed) {
+                    upgradeBtn.className = 'btn btn-sm mb-1 wache-upgrade-toggle btn-success';
+                    upgradeBtn.innerHTML = '<i class="bi bi-check-circle-fill me-1"></i>' + label;
+                } else {
+                    upgradeBtn.className = 'btn btn-sm mb-1 wache-upgrade-toggle btn-outline-secondary';
+                    upgradeBtn.innerHTML = label;
+                }
+                const slotsEl = document.getElementById('effectiveSlotsVal');
+                if (slotsEl && typeof data.effective_max !== 'undefined') {
+                    slotsEl.textContent = String(data.effective_max);
+                }
+            })
+            .catch(() => { window.location.reload(); })
+            .finally(() => { upgradeBtn.disabled = false; });
+    });
+});
+</script>
+{% endblock %}

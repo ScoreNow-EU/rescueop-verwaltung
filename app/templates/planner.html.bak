@@ -1,0 +1,770 @@
+﻿{% extends "base.html" %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h2><i class="bi bi-list-check me-2"></i>Planer</h2>
+    <div class="d-flex gap-2">
+        <form method="post" action="/planner/add/divider" class="d-flex gap-1">
+            <input type="text" name="divider_label" class="form-control form-control-sm" placeholder="Abschnitt-Name" style="width:160px">
+            <button class="btn btn-sm btn-outline-secondary text-nowrap"><i class="bi bi-distribute-vertical me-1"></i>Trenner</button>
+        </form>
+        <button class="btn btn-warning" data-bs-toggle="modal" data-bs-target="#addWacheModal">
+            <i class="bi bi-building me-1"></i>Wache (aus)bauen
+        </button>
+        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addVehicleModal">
+            <i class="bi bi-truck me-1"></i>Fahrzeug kaufen
+        </button>
+    </div>
+</div>
+
+{% if items %}
+<div class="card mb-4">
+    <div class="card-header d-flex justify-content-between">
+        <strong>Geplante Anschaffungen</strong>
+        <span class="badge bg-primary fs-6">Gesamt: {{ '{:,.0f}'.format(running[-1] if running else 0).replace(',', '.') }} â‚¬</span>
+    </div>
+    <div class="card-body p-0">
+        <table class="table table-hover mb-0">
+            <thead>
+                <tr>
+                    <th style="width:40px"><i class="bi bi-grip-vertical"></i></th>
+                    <th style="width:40px">#</th>
+                    <th>Kategorie</th>
+                    <th>Beschreibung</th>
+                    <th class="text-center">Fahrzeuge</th>
+                    <th class="text-end">Kosten</th>
+                    <th class="text-end">Laufende Summe</th>
+                    <th style="width:140px">Aktionen</th>
+                </tr>
+            </thead>
+            <tbody id="planList">
+                {% set ns = namespace(row_num=0, section_idx=0) %}
+                {% for item in items %}
+                {% if item.category == 'divider' %}
+                {# Find the matching section for subtotal #}
+                {% set sec = sections[ns.section_idx] if ns.section_idx < sections|length else None %}
+                {% set ns.section_idx = ns.section_idx + 1 %}
+                <tr data-id="{{ item.id }}" class="table-secondary divider-row">
+                    <td class="drag-handle"><i class="bi bi-grip-vertical text-muted"></i></td>
+                    <td></td>
+                    <td colspan="4">
+                        <div class="d-flex align-items-center gap-2">
+                            <i class="bi bi-distribute-vertical"></i>
+                            <form method="post" action="/planner/{{ item.id }}/rename_divider" class="d-flex gap-1 flex-grow-1">
+                                <input type="text" name="divider_label" value="{{ item.notes or '' }}" class="form-control form-control-sm bg-transparent border-0 fw-bold" style="max-width:300px">
+                                <button class="btn btn-sm btn-outline-secondary" title="Umbenennen"><i class="bi bi-check-lg"></i></button>
+                            </form>
+                        </div>
+                    </td>
+                    <td class="text-end fw-bold">
+                        {% if sec %}{{ '{:,.0f}'.format(sec.subtotal).replace(',', '.') }} â‚¬{% endif %}
+                    </td>
+                    <td>
+                        <form method="post" action="/planner/{{ item.id }}/delete"
+                              onsubmit="return confirm('Abschnitt-Trenner lÃ¶schen?')">
+                            <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+                        </form>
+                    </td>
+                </tr>
+                {% else %}
+                {% set ns.row_num = ns.row_num + 1 %}
+                <tr data-id="{{ item.id }}">
+                    <td class="drag-handle"><i class="bi bi-grip-vertical text-muted"></i></td>
+                    <td>{{ ns.row_num }}</td>
+                    <td>
+                        {% if item.category == 'wache_buy' %}
+                        <span class="badge bg-warning text-dark"><i class="bi bi-building me-1"></i>Neue Wache</span>
+                        {% elif item.category == 'wache_upgrade' %}
+                        <span class="badge bg-warning text-dark"><i class="bi bi-arrow-up-circle me-1"></i>Ausbau</span>
+                        {% elif item.category == 'wache_extension' %}
+                        <span class="badge bg-info"><i class="bi bi-wrench me-1"></i>Erweiterung</span>
+                        {% elif item.category == 'vehicle' %}
+                        <span class="badge bg-primary"><i class="bi bi-truck me-1"></i>Fahrzeug</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if item.category == 'vehicle' %}
+                        {% if item.vehicle_nickname %}
+                        <div class="d-flex align-items-center gap-2">
+                            <strong>{{ item.vehicle_nickname }}</strong>
+                            <button type="button" class="btn btn-link btn-sm p-0 text-muted" style="line-height:1"
+                                    onclick="toggleNicknameEdit({{ item.id }})">
+                                <i class="bi bi-pencil-fill" style="font-size:.75rem"></i>
+                            </button>
+                        </div>
+                        <small class="text-muted">{{ item.vehicle_type.name if item.vehicle_type else '?' }}{% if item.vehicle_wache %} â†’ {{ item.vehicle_wache.name }}{% endif %}{% if item.selected_modules %} Â· {{ item.selected_modules | map(attribute='name') | join(', ') }}{% endif %}</small>
+                        {% else %}
+                        <div class="d-flex align-items-center gap-2">
+                            <span class="text-muted fst-italic">kein Rufname</span>
+                            <button type="button" class="btn btn-link btn-sm p-0 text-primary" style="line-height:1"
+                                    onclick="toggleNicknameEdit({{ item.id }})">
+                                <i class="bi bi-pencil-fill" style="font-size:.75rem"></i> setzen
+                            </button>
+                        </div>
+                        <small class="text-muted">{{ item.description }}</small>
+                        {% endif %}
+                        <form method="post" action="/planner/{{ item.id }}/set_nickname"
+                              id="nicknameForm{{ item.id }}" class="d-none mt-1">
+                            <div class="input-group input-group-sm">
+                                <input type="text" name="vehicle_nickname" class="form-control"
+                                       value="{{ item.vehicle_nickname or '' }}" placeholder="Rufname">
+                                <button type="submit" class="btn btn-outline-primary">
+                                    <i class="bi bi-check-lg"></i>
+                                </button>
+                                <button type="button" class="btn btn-outline-secondary"
+                                        onclick="toggleNicknameEdit({{ item.id }})">
+                                    <i class="bi bi-x-lg"></i>
+                                </button>
+                            </div>
+                        </form>
+                        {% else %}
+                        {{ item.description }}
+                        {% endif %}
+                        {% if item.notes %}<br><small class="text-muted">{{ item.notes }}</small>{% endif %}
+                    </td>
+                    <td class="text-center">
+                        {% set cap = capacity_info[loop.index0] %}
+                        {% if cap %}
+                        {% if cap.max > 0 %}
+                        <span class="badge {% if cap.current > cap.max %}bg-danger{% elif cap.current == cap.max %}bg-warning text-dark{% else %}bg-success{% endif %}">
+                            {{ cap.current }}/{{ cap.max }}
+                        </span>
+                        {% else %}
+                        <span class="badge bg-secondary">{{ cap.current }}/?</span>
+                        {% endif %}
+                        {% endif %}
+                    </td>
+                    <td class="text-end">{{ '{:,.0f}'.format(item.cost).replace(',', '.') }} â‚¬</td>
+                    <td class="text-end fw-bold">{{ '{:,.0f}'.format(running[loop.index0]).replace(',', '.') }} â‚¬</td>
+                    <td>
+                        <div class="d-flex gap-1">
+                            <form method="post" action="/planner/{{ item.id }}/done">
+                                <button class="btn btn-sm btn-outline-success" title="Erledigt &amp; Ã¼bernehmen"><i class="bi bi-check-lg"></i></button>
+                            </form>
+                            <form method="post" action="/planner/{{ item.id }}/delete"
+                                  onsubmit="return confirm('Eintrag lÃ¶schen?')">
+                                <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+                            </form>
+                        </div>
+                    </td>
+                </tr>
+                {% endif %}
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% else %}
+<div class="alert alert-info">Noch keine EintrÃ¤ge im Planer.</div>
+{% endif %}
+
+<!-- Done items -->
+{% if done_items %}
+<div class="card">
+    <div class="card-header">
+        <strong><i class="bi bi-check-circle me-1"></i>Erledigte EintrÃ¤ge</strong>
+    </div>
+    <div class="card-body p-0">
+        <table class="table table-sm mb-0">
+            <thead>
+                <tr><th>Kategorie</th><th>Beschreibung</th><th class="text-end">Kosten</th><th style="width:120px">Aktionen</th></tr>
+            </thead>
+            <tbody>
+                {% for item in done_items %}
+                <tr class="text-muted">
+                    <td>
+                        {% if item.category == 'wache_buy' %}
+                        <span class="badge bg-warning text-dark"><i class="bi bi-building"></i></span>
+                        {% elif item.category == 'wache_upgrade' %}
+                        <span class="badge bg-warning text-dark"><i class="bi bi-arrow-up-circle"></i></span>
+                        {% elif item.category == 'wache_extension' %}
+                        <span class="badge bg-info"><i class="bi bi-wrench"></i></span>
+                        {% elif item.category == 'vehicle' %}
+                        <span class="badge bg-primary"><i class="bi bi-truck"></i></span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if item.category == 'vehicle' and item.vehicle_nickname %}
+                        <del><strong>{{ item.vehicle_nickname }}</strong></del>
+                        <br><small class="text-muted">{{ item.vehicle_type.name if item.vehicle_type else '?' }}{% if item.vehicle_wache %} â†’ {{ item.vehicle_wache.name }}{% endif %}</small>
+                        {% else %}
+                        <del>{{ item.description }}</del>
+                        {% endif %}
+                    </td>
+                    <td class="text-end">{{ '{:,.0f}'.format(item.cost).replace(',', '.') }} â‚¬</td>
+                    <td>
+                        <form method="post" action="/planner/{{ item.id }}/undone" class="d-inline">
+                            <button class="btn btn-sm btn-outline-secondary" title="ZurÃ¼ck in Planung"><i class="bi bi-arrow-counterclockwise"></i></button>
+                        </form>
+                        <form method="post" action="/planner/{{ item.id }}/delete" class="d-inline"
+                              onsubmit="return confirm('EndgÃ¼ltig lÃ¶schen?')">
+                            <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+
+<!-- ===== Modal: Wache (aus)bauen ===== -->
+<div class="modal fade" id="addWacheModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-building me-2"></i>Wache (aus)bauen</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <!-- Sub-tabs: Kaufen / Ausbauen / Erweitern -->
+                <ul class="nav nav-tabs mb-3" role="tablist">
+                    <li class="nav-item">
+                        <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#wacheKaufen">Neue Wache kaufen</button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#wacheAusbauen">Wache ausbauen</button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#wacheErweitern">Wache erweitern</button>
+                    </li>
+                </ul>
+                <div class="tab-content">
+                    <!-- Tab: Neue Wache kaufen -->
+                    <div class="tab-pane fade show active" id="wacheKaufen">
+                        <form method="post" action="/planner/add/wache_buy" id="formWacheBuy">
+                            {% if org_types %}
+                            <div class="row g-2 mb-2 align-items-end">
+                                <div class="col-5">
+                                    <label class="form-label">Org-Typ</label>
+                                    <select class="form-select form-select-sm" id="wacheBuyOrg">
+                                        <option value="" data-no-location="0">â€” keiner â€”</option>
+                                        {% for o in org_types %}
+                                        <option value="{{ o.abbreviation }}" data-no-location="{{ '1' if o.no_location else '0' }}">
+                                            {{ o.abbreviation }} â€“ {{ o.full_name }}
+                                        </option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <div class="col-4" id="wacheBuyLocDiv">
+                                    <label class="form-label">Standort</label>
+                                    <select class="form-select form-select-sm" id="wacheBuyLoc">
+                                        <option value="">â€” keiner â€”</option>
+                                        {% for l in locations %}
+                                        <option value="{{ l.abbreviation }}">{{ l.abbreviation }} â€“ {{ l.full_name }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <div class="col-3" id="wacheBuyNrDiv" style="display:none">
+                                    <label class="form-label">Nr.</label>
+                                    <input type="number" class="form-control form-control-sm" id="wacheBuyNr" min="1" placeholder="1">
+                                </div>
+                                <div class="col-auto">
+                                    <button type="button" class="btn btn-sm btn-outline-secondary" id="wacheBuyGenBtn" title="Namen generieren">
+                                        <i class="bi bi-magic me-1"></i>Generieren
+                                    </button>
+                                </div>
+                            </div>
+                            {% endif %}
+                            <div class="mb-3">
+                                <label class="form-label">Name der Wache</label>
+                                <input type="text" name="wache_name" class="form-control" id="wacheBuyName" required placeholder="z.B. FF-LIN">
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Wachen-Typ</label>
+                                <select name="wache_type_id" class="form-select" required id="wacheBuyType">
+                                    <option value="">â€” wÃ¤hlen â€”</option>
+                                    {% for wt in wache_types %}
+                                    <option value="{{ wt.id }}"
+                                            data-cost="{{ wt.levels[0].cost if wt.levels else 0 }}"
+                                            data-max-vehicles="{{ wt.levels[0].max_vehicles if wt.levels else 0 }}">{{ wt.name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="mb-2" id="wacheBuyCost" style="display:none">
+                                <span class="fw-bold">Kosten: <span id="wacheBuyCostVal"></span> â‚¬</span>
+                                <br><small class="text-muted">Max. Fahrzeuge: <span id="wacheBuyMaxVeh"></span></small>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Notizen (optional)</label>
+                                <textarea name="notes" class="form-control" rows="1"></textarea>
+                            </div>
+                            <button type="submit" class="btn btn-primary"><i class="bi bi-plus-lg me-1"></i>Zum Planer hinzufÃ¼gen</button>
+                        </form>
+                    </div>
+                    <!-- Tab: Wache erweitern (Erweiterungen) -->
+                    <div class="tab-pane fade" id="wacheErweitern">
+                        <form method="post" action="/planner/add/wache_extension" id="formWacheExtension">
+                            <div class="mb-3">
+                                <label class="form-label">Wache</label>
+                                <select name="extension_wache_ref" class="form-select" required id="extWacheSelect">
+                                    <option value="">â€” wÃ¤hlen â€”</option>
+                                    <option disabled>â€” aktive Wachen â€”</option>
+                                    {% for w in planner_wachen if w.kind == 'real' %}
+                                    <option value="{{ w.ref }}">{{ w.name }} ({{ w.wache_type.name }}{% if w.kind == 'planned' %}, geplant{% endif %})</option>
+                                    {% endfor %}
+                                    <option disabled>â€” geplante Wachen â€”</option>
+                                    {% for w in planner_wachen if w.kind == 'planned' %}
+                                    <option value="{{ w.ref }}">{{ w.name }} ({{ w.wache_type.name }}, geplant)</option>
+                                    {% endfor %}
+                                </select>
+                                <small class="text-muted d-block mt-1">Hier erscheinen auch Wachen, die im Planer nur als Kauf eingetragen sind.</small>
+                            </div>
+                            <div class="mb-3" id="extUpgradeGroup" style="display:none">
+                                <label class="form-label">Erweiterung</label>
+                                <select name="wache_upgrade_id" class="form-select" required id="extUpgradeSelect">
+                                </select>
+                            </div>
+                            <div class="mb-2" id="extCostDisplay" style="display:none">
+                                <span class="fw-bold">Kosten: <span id="extCostVal"></span> â‚¬</span>
+                                <br><small class="text-muted">ZusÃ¤tzliche StellplÃ¤tze: +<span id="extExtraSlots"></span></small>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Notizen (optional)</label>
+                                <textarea name="notes" class="form-control" rows="1"></textarea>
+                            </div>
+                            <button type="submit" class="btn btn-primary" id="extSubmitBtn" disabled><i class="bi bi-plus-lg me-1"></i>Zum Planer hinzufÃ¼gen</button>
+                        </form>
+                    </div>
+                    <!-- Tab: Wache ausbauen -->
+                    <div class="tab-pane fade" id="wacheAusbauen">
+                        <form method="post" action="/planner/add/wache_upgrade" id="formWacheUpgrade">
+                            <div class="mb-3">
+                                <label class="form-label">Wache</label>
+                                <select name="target_wache_ref" class="form-select" required id="upgradeWacheSelect">
+                                    <option value="">â€” wÃ¤hlen â€”</option>
+                                    <option disabled>â€” aktive Wachen â€”</option>
+                                    {% for w in planner_wachen if w.kind == 'real' %}
+                                    <option value="{{ w.ref }}">{{ w.name }} ({{ w.wache_type.name }}, Stufe {{ w.current_level }}{% if w.kind == 'planned' %}, geplant{% endif %})</option>
+                                    {% endfor %}
+                                    <option disabled>â€” geplante Wachen â€”</option>
+                                    {% for w in planner_wachen if w.kind == 'planned' %}
+                                    <option value="{{ w.ref }}">{{ w.name }} ({{ w.wache_type.name }}, geplant)</option>
+                                    {% endfor %}
+                                </select>
+                                <small class="text-muted d-block mt-1">Du kannst auch auf eine noch nicht erledigte Wache aus dem Planer ausbauen.</small>
+                            </div>
+                            <div class="mb-3" id="upgradeLevelGroup" style="display:none">
+                                <label class="form-label">Ziel-Stufe</label>
+                                <select name="target_level" class="form-select" required id="upgradeLevelSelect">
+                                </select>
+                            </div>
+                            <small class="text-muted d-block mb-2" id="upgradeCurrentInfo" style="display:none"></small>
+                            <div class="mb-2" id="upgradeCost" style="display:none">
+                                <span class="fw-bold">Kosten: <span id="upgradeCostVal"></span> â‚¬</span>
+                                <br><small class="text-muted" id="upgradeCapacity"></small>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Notizen (optional)</label>
+                                <textarea name="notes" class="form-control" rows="1"></textarea>
+                            </div>
+                            <button type="submit" class="btn btn-primary"><i class="bi bi-plus-lg me-1"></i>Zum Planer hinzufÃ¼gen</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ===== Modal: Fahrzeug kaufen ===== -->
+<div class="modal fade" id="addVehicleModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <form method="post" action="/planner/add/vehicle" class="modal-content" id="formVehicle">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-truck me-2"></i>Fahrzeug kaufen</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label">Fahrzeugtyp</label>
+                        <select name="vehicle_type_id" class="form-select" required id="vehicleTypeSelect">
+                            <option value="">â€” wÃ¤hlen â€”</option>
+                            {% for vt in vehicle_types %}
+                            <option value="{{ vt.id }}" data-price="{{ vt.base_price }}"
+                                    data-abbr="{{ vt.abbreviation or '' }}">
+                                {{ vt.name }} ({{ '{:,.0f}'.format(vt.base_price).replace(',', '.') }} â‚¬)
+                                {% if not vt.abbreviation %}âš {% endif %}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Zuweisen an Wache</label>
+                        <select name="vehicle_wache_ref" class="form-select" id="vehicleWacheSelect">
+                            <option value="" data-org="" data-loc="" data-no-loc="0">â€” keine (spÃ¤ter zuweisen) â€”</option>
+                            <option disabled>â€” aktive Wachen â€”</option>
+                            {% for w in planner_wachen if w.kind == 'real' %}
+                            {% set lvl_obj = namespace(max=0) %}
+                            {% for l in w.wache_type.levels if l.level_number == w.current_level %}
+                            {% set lvl_obj.max = l.max_vehicles %}
+                            {% endfor %}
+                            <option value="{{ w.ref }}"
+                                    data-org="{{ w.org_type.abbreviation if w.org_type else '' }}"
+                                    data-name="{{ w.name }}"
+                                    data-loc="{{ w.location.abbreviation if w.location else '' }}"
+                                    data-no-loc="{{ '1' if (w.org_type and w.org_type.no_location) else '0' }}">
+                                {{ w.name }} ({{ w.vehicles|length }}/{{ lvl_obj.max }} Fzg.)
+                                {% if not w.org_type %}âš {% endif %}
+                            </option>
+                            {% endfor %}
+                            <option disabled>â€” geplante Wachen â€”</option>
+                            {% for w in planner_wachen if w.kind == 'planned' %}
+                            {% set lvl_obj = namespace(max=w.max_vehicles) %}
+                            <option value="{{ w.ref }}"
+                                    data-org="{{ w.name }}"
+                                    data-name="{{ w.name }}"
+                                    data-loc=""
+                                    data-no-loc="1">
+                                {{ w.name }} (0/{{ lvl_obj.max }} Fzg., geplant)
+                            </option>
+                            {% endfor %}
+                        </select>
+                        <small class="text-muted d-block mt-1">Auch geplante Wachen aus dem Planer können hier ausgewählt werden.</small>
+                    </div>
+                </div>
+
+                <!-- Naming breakdown (visible when wache or type is selected) -->
+                <div class="mt-3 p-3 border rounded bg-light" id="namingBox">
+                    <div class="d-flex align-items-center gap-2 mb-2">
+                        <strong><i class="bi bi-tag me-1"></i>Rufname</strong>
+                        <span class="badge bg-primary fs-6" id="namingPreview">â€”</span>
+                        <button type="button" class="btn btn-sm btn-outline-secondary ms-auto" id="vehGenBtn">
+                            <i class="bi bi-magic me-1"></i>Ãœbernehmen
+                        </button>
+                    </div>
+                    <div class="row g-2">
+                        <div class="col-3">
+                            <label class="form-label small mb-1">Org-Typ</label>
+                            <input type="text" class="form-control form-control-sm" id="vehNamingOrg"
+                                   placeholder="z.B. FF" maxlength="20">
+                        </div>
+                        <div class="col-3" id="vehNamingLocDiv">
+                            <label class="form-label small mb-1">Standort</label>
+                            <input type="text" class="form-control form-control-sm" id="vehNamingLoc"
+                                   placeholder="z.B. RIC" maxlength="20">
+                        </div>
+                        <div class="col-3">
+                            <label class="form-label small mb-1">KÃ¼rzel</label>
+                            <input type="text" class="form-control form-control-sm" id="vehNamingAbbr"
+                                   placeholder="z.B. DLK" maxlength="20">
+                        </div>
+                        <div class="col-3">
+                            <label class="form-label small mb-1">Nr.</label>
+                            <input type="number" class="form-control form-control-sm" id="vehNamingNr"
+                                   min="1" placeholder="1">
+                        </div>
+                    </div>
+                    <div id="namingHints" class="mt-2"></div>
+                    <div class="mt-2">
+                        <input type="text" name="vehicle_nickname" class="form-control" id="vehicleNickname"
+                               placeholder="Generierter oder manueller Rufname">
+                    </div>
+                </div>
+
+                <div class="mt-3" id="vehicleModulesGroup" style="display:none">
+                    <label class="form-label fw-bold">Module</label>
+                    <div id="vehicleModulesList" class="row g-2">
+                    </div>
+                </div>
+                <div class="mt-3" id="vehicleCostDisplay" style="display:none">
+                    <span class="fw-bold fs-5">Gesamtkosten: <span id="vehicleCostVal">0</span> â‚¬</span>
+                </div>
+                <div class="mt-3">
+                    <label class="form-label">Notizen (optional)</label>
+                    <textarea name="notes" class="form-control" rows="1"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Abbrechen</button>
+                <button type="submit" class="btn btn-primary"><i class="bi bi-plus-lg me-1"></i>Zum Planer hinzufÃ¼gen</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // ---- Sortable drag-to-reorder ----
+    var planList = document.getElementById('planList');
+    if (planList) {
+        Sortable.create(planList, {
+            handle: '.drag-handle',
+            animation: 150,
+            onEnd: function() {
+                const order = [];
+                planList.querySelectorAll('tr[data-id]').forEach(r => order.push(r.dataset.id));
+                fetch('/planner/reorder', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(order)
+                }).then(() => window.location.reload());
+            }
+        });
+    }
+
+    // ---- Wache kaufen: show cost ----
+    const wacheBuyType = document.getElementById('wacheBuyType');
+    if (wacheBuyType) {
+        wacheBuyType.addEventListener('change', function() {
+            const opt = this.options[this.selectedIndex];
+            const costDiv = document.getElementById('wacheBuyCost');
+            if (opt.value) {
+                const cost = parseFloat(opt.dataset.cost || 0);
+                document.getElementById('wacheBuyCostVal').textContent = cost.toLocaleString('de-DE');
+                document.getElementById('wacheBuyMaxVeh').textContent = opt.dataset.maxVehicles || '0';
+                costDiv.style.display = '';
+            } else {
+                costDiv.style.display = 'none';
+            }
+        });
+    }
+
+    // ---- Wache ausbauen: load levels via AJAX ----
+    const upgradeWache = document.getElementById('upgradeWacheSelect');
+    if (upgradeWache) {
+        upgradeWache.addEventListener('change', function() {
+            const wid = this.value;
+            const lvlGroup = document.getElementById('upgradeLevelGroup');
+            const lvlSelect = document.getElementById('upgradeLevelSelect');
+            const costDiv = document.getElementById('upgradeCost');
+            if (!wid) {
+                lvlGroup.style.display = 'none';
+                costDiv.style.display = 'none';
+                return;
+            }
+            fetch('/planner/api/wache_levels/' + wid)
+                .then(r => r.json())
+                .then(data => {
+                    lvlSelect.innerHTML = '<option value="">â€” wÃ¤hlen â€”</option>';
+                    data.levels.forEach(l => {
+                        const o = document.createElement('option');
+                        o.value = l.number;
+                        o.textContent = l.name + ' (' + l.cost.toLocaleString('de-DE') + ' \u20ac, max. ' + l.max_vehicles + ' Fzg.)';
+                        o.dataset.cost = l.cost;
+                        o.dataset.maxVehicles = l.max_vehicles;
+                        lvlSelect.appendChild(o);
+                    });
+                    // Show current vehicle count
+                    const infoEl = document.getElementById('upgradeCurrentInfo');
+                    infoEl.textContent = 'Aktuell ' + data.current_vehicles + ' Fahrzeug(e) in dieser Wache';
+                    infoEl.style.display = '';
+                    lvlGroup.style.display = '';
+                    costDiv.style.display = 'none';
+                });
+        });
+        // Show cost when level selected
+        document.getElementById('upgradeLevelSelect').addEventListener('change', function() {
+            const opt = this.options[this.selectedIndex];
+            const costDiv = document.getElementById('upgradeCost');
+            if (opt.value) {
+                const cost = parseFloat(opt.dataset.cost || 0);
+                const maxV = parseInt(opt.dataset.maxVehicles || 0);
+                document.getElementById('upgradeCostVal').textContent =
+                    cost.toLocaleString('de-DE');
+                document.getElementById('upgradeCapacity').textContent =
+                    'Max. Fahrzeuge: ' + maxV;
+                costDiv.style.display = '';
+            } else {
+                costDiv.style.display = 'none';
+            }
+        });
+    }
+
+    // ---- Wache erweitern: load upgrades via AJAX ----
+    const extWache = document.getElementById('extWacheSelect');
+    if (extWache) {
+        extWache.addEventListener('change', function() {
+            const wid = this.value;
+            const ugGroup = document.getElementById('extUpgradeGroup');
+            const ugSelect = document.getElementById('extUpgradeSelect');
+            const costDiv = document.getElementById('extCostDisplay');
+            const submitBtn = document.getElementById('extSubmitBtn');
+            submitBtn.disabled = true;
+            if (!wid) { ugGroup.style.display = 'none'; costDiv.style.display = 'none'; return; }
+            fetch('/planner/api/wache_upgrades/' + wid)
+                .then(r => r.json())
+                .then(data => {
+                    ugSelect.innerHTML = '<option value="">â€” wÃ¤hlen â€”</option>';
+                    if (data.upgrades.length === 0) {
+                        ugSelect.innerHTML = '<option value="">Keine Erweiterungen verfÃ¼gbar</option>';
+                        ugGroup.style.display = ''; costDiv.style.display = 'none'; return;
+                    }
+                    data.upgrades.forEach(u => {
+                        const o = document.createElement('option');
+                        o.value = u.id;
+                        o.textContent = u.name + ' (+' + u.extra_slots + ' Stellpl., ' + u.cost.toLocaleString('de-DE') + ' \u20ac)';
+                        o.dataset.cost = u.cost; o.dataset.extraSlots = u.extra_slots;
+                        ugSelect.appendChild(o);
+                    });
+                    ugGroup.style.display = ''; costDiv.style.display = 'none';
+                });
+        });
+        document.getElementById('extUpgradeSelect').addEventListener('change', function() {
+            const opt = this.options[this.selectedIndex];
+            const costDiv = document.getElementById('extCostDisplay');
+            const submitBtn = document.getElementById('extSubmitBtn');
+            if (opt.value) {
+                document.getElementById('extCostVal').textContent = parseFloat(opt.dataset.cost || 0).toLocaleString('de-DE');
+                document.getElementById('extExtraSlots').textContent = opt.dataset.extraSlots || '0';
+                costDiv.style.display = ''; submitBtn.disabled = false;
+            } else { costDiv.style.display = 'none'; submitBtn.disabled = true; }
+        });
+    }
+
+    function updateVehicleCost() {
+        let total = basePrice;
+        document.querySelectorAll('.vehicle-mod-check:checked').forEach(cb => {
+            total += parseFloat(cb.dataset.price || 0);
+        });
+        const el = document.getElementById('vehicleCostVal');
+        if (el) el.textContent = total.toLocaleString('de-DE');
+    }
+
+    // ---- Vehicle name auto-generation ----
+    var wacheVehCounts = {{ wache_veh_counts_json | default({}, true) | tojson }};
+
+    var vehicleTypeSelect  = document.getElementById('vehicleTypeSelect');
+    var vehicleWacheSelect = document.getElementById('vehicleWacheSelect');
+    var vehNamingOrg    = document.getElementById('vehNamingOrg');
+    var vehNamingLoc    = document.getElementById('vehNamingLoc');
+    var vehNamingLocDiv = document.getElementById('vehNamingLocDiv');
+    var vehNamingAbbr   = document.getElementById('vehNamingAbbr');
+    var vehNamingNr     = document.getElementById('vehNamingNr');
+    var namingPreview   = document.getElementById('namingPreview');
+    var namingHints     = document.getElementById('namingHints');
+    var vehicleNickname = document.getElementById('vehicleNickname');
+
+    function buildVehicleName() {
+        var org  = vehNamingOrg  ? vehNamingOrg.value.trim()  : '';
+        var loc  = vehNamingLoc  ? vehNamingLoc.value.trim()  : '';
+        var abbr = vehNamingAbbr ? vehNamingAbbr.value.trim() : '';
+        var nr   = vehNamingNr   ? vehNamingNr.value.trim()   : '';
+        var noLoc = vehNamingLocDiv && vehNamingLocDiv.style.display === 'none';
+        var parts = [];
+        if (org) parts.push(org);
+        if (!noLoc && loc) parts.push(loc);
+        parts.push(abbr + (nr || ''));
+        return parts.join('-');
+    }
+
+    function updateNamingPreview() {
+        if (namingPreview) namingPreview.textContent = buildVehicleName() || 'â€”';
+    }
+
+    function syncNamingFromSelects() {
+        if (!vehicleTypeSelect || !vehicleWacheSelect) return;
+        var wOpt = vehicleWacheSelect.options[vehicleWacheSelect.selectedIndex];
+        var tOpt = vehicleTypeSelect.options[vehicleTypeSelect.selectedIndex];
+        var org       = wOpt ? (wOpt.dataset.org  || '') : '';
+        var wacheName = wOpt ? (wOpt.dataset.name || '') : '';
+        var loc       = wOpt ? (wOpt.dataset.loc  || '') : '';
+        var noLoc     = wOpt ? (wOpt.dataset.noLoc === '1') : false;
+        var abbr      = tOpt ? (tOpt.dataset.abbr || '') : '';
+        var orgDisplay = (noLoc && wacheName) ? wacheName : org;
+        if (vehNamingOrg  && orgDisplay) vehNamingOrg.value  = orgDisplay;
+        if (vehNamingLoc  && loc)        vehNamingLoc.value  = loc;
+        if (vehNamingAbbr && abbr)       vehNamingAbbr.value = abbr;
+        if (vehNamingLocDiv) vehNamingLocDiv.style.display = noLoc ? 'none' : '';
+        if (noLoc && vehNamingLoc) vehNamingLoc.value = '';
+        if (vehNamingNr && vehicleWacheSelect.value && vehicleTypeSelect.value) {
+            var counts = wacheVehCounts[vehicleWacheSelect.value] || {};
+            vehNamingNr.value = (parseInt(counts[vehicleTypeSelect.value] || 0)) + 1;
+        }
+        if (namingHints) {
+            var hints = [];
+            if (!org) hints.push('<a href="/fleet" target="_blank">Org-Typ an der Wache hinterlegen</a>');
+            if (!noLoc && !loc) hints.push('<a href="/fleet" target="_blank">Standort an der Wache hinterlegen</a>');
+            if (!abbr) hints.push('<a href="/vehicles" target="_blank">KÃ¼rzel am Fahrzeugtyp hinterlegen</a>');
+            namingHints.innerHTML = hints.length
+                ? '<small class="text-warning"><i class="bi bi-exclamation-triangle me-1"></i>' + hints.join(' \u00b7 ') + '</small>'
+                : '';
+        }
+        updateNamingPreview();
+    }
+
+    [vehNamingOrg, vehNamingLoc, vehNamingAbbr, vehNamingNr].forEach(function(el) {
+        if (el) el.addEventListener('input', updateNamingPreview);
+    });
+    if (vehicleTypeSelect)  vehicleTypeSelect.addEventListener('change', syncNamingFromSelects);
+    if (vehicleWacheSelect) vehicleWacheSelect.addEventListener('change', syncNamingFromSelects);
+
+    var vehGenBtn = document.getElementById('vehGenBtn');
+    if (vehGenBtn) {
+        vehGenBtn.addEventListener('click', function() {
+            var name = buildVehicleName();
+            if (name && vehicleNickname) vehicleNickname.value = name;
+        });
+    }
+
+    // Auto-fill nickname on submit if still empty
+    var formVehicle = document.getElementById('formVehicle');
+    if (formVehicle) {
+        formVehicle.addEventListener('submit', function() {
+            if (vehicleNickname && !vehicleNickname.value.trim()) {
+                var name = buildVehicleName();
+                if (name) vehicleNickname.value = name;
+            }
+        });
+    }
+
+    // Inline nickname editing in plan list
+    window.toggleNicknameEdit = function(id) {
+        var form = document.getElementById('nicknameForm' + id);
+        if (form) {
+            form.classList.toggle('d-none');
+            if (!form.classList.contains('d-none')) form.querySelector('input').focus();
+        }
+    };
+
+    // ---- Wache name generation (Neue Wache kaufen tab) ----
+    var orgWacheNext = {{ org_wache_next_json | default({}, true) | tojson }};
+    var wacheBuyOrg    = document.getElementById('wacheBuyOrg');
+    var wacheBuyLoc    = document.getElementById('wacheBuyLoc');
+    var wacheBuyNr     = document.getElementById('wacheBuyNr');
+    var wacheBuyLocDiv = document.getElementById('wacheBuyLocDiv');
+    var wacheBuyNrDiv  = document.getElementById('wacheBuyNrDiv');
+    var wacheBuyName   = document.getElementById('wacheBuyName');
+    var wacheBuyGenBtn = document.getElementById('wacheBuyGenBtn');
+
+    function applyNoLocWache() {
+        if (!wacheBuyOrg) return;
+        var opt   = wacheBuyOrg.options[wacheBuyOrg.selectedIndex];
+        var noLoc = opt && opt.dataset.noLocation === '1';
+        if (wacheBuyLocDiv) wacheBuyLocDiv.style.display = noLoc ? 'none' : '';
+        if (wacheBuyNrDiv)  wacheBuyNrDiv.style.display  = noLoc ? ''     : 'none';
+        if (noLoc && wacheBuyNr && opt.value) {
+            wacheBuyNr.value = orgWacheNext[opt.value] || 1;
+        }
+    }
+
+    function generateWacheName() {
+        if (!wacheBuyOrg) return '';
+        var opt   = wacheBuyOrg.options[wacheBuyOrg.selectedIndex];
+        var org   = opt.value;
+        var noLoc = opt && opt.dataset.noLocation === '1';
+        var nr    = (wacheBuyNr && noLoc) ? wacheBuyNr.value.trim() : '';
+        var loc   = (wacheBuyLoc && !noLoc) ? wacheBuyLoc.value.trim() : '';
+        if (noLoc && nr) return org + nr;
+        var parts = [];
+        if (org) parts.push(org);
+        if (loc) parts.push(loc);
+        return parts.join('-');
+    }
+
+    if (wacheBuyOrg) {
+        wacheBuyOrg.addEventListener('change', applyNoLocWache);
+        applyNoLocWache();
+    }
+    if (wacheBuyGenBtn) {
+        wacheBuyGenBtn.addEventListener('click', function() {
+            var name = generateWacheName();
+            if (name && wacheBuyName) wacheBuyName.value = name;
+        });
+    }
+});
+</script>
+{% endblock %}

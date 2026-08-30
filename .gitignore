@@ -1,0 +1,25 @@
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environments
+.venv/
+venv/
+
+# Environment files
+.env
+
+# Local runtime artifacts
+*.log
+*.sqlite
+*.sqlite3
+*.db
+
+# Project runtime data
+data/
+
+# OS/editor
+.DS_Store
+.vscode/

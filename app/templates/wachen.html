@@ -1,0 +1,376 @@
+{% extends "base.html" %}
+{% block content %}
+<div id="wachenPageRoot">
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h2><i class="bi bi-building me-2"></i>Wachen-Typen</h2>
+    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addWacheModal">
+        <i class="bi bi-plus-lg me-1"></i>Neuer Wachen-Typ
+    </button>
+</div>
+
+{% if wache_types %}
+<div class="accordion" id="wacheAccordion">
+    {% for wt in wache_types %}
+    <div class="accordion-item">
+        <h2 class="accordion-header">
+            <button class="accordion-button collapsed" type="button"
+                    data-bs-toggle="collapse" data-bs-target="#wt-{{ wt.id }}">
+                <span class="d-flex align-items-center gap-3 w-100">
+                    {% if wt.image %}
+                    <img src="/assets/wachen/{{ wt.image }}" alt="{{ wt.name }}" class="vehicle-thumb">
+                    {% else %}
+                    <span class="vehicle-thumb-placeholder"><i class="bi bi-building"></i></span>
+                    {% endif %}
+                    <strong>{{ wt.name }}</strong>
+                    <span class="badge bg-secondary ms-auto">{{ wt.levels|length }} Stufen</span>
+                </span>
+            </button>
+        </h2>
+        <div id="wt-{{ wt.id }}" class="accordion-collapse collapse">
+            <div class="accordion-body">
+                <!-- Edit wache type -->
+            <form method="post" action="/wachen/{{ wt.id }}/edit" enctype="multipart/form-data" class="row g-2 mb-4 align-items-end" data-async-wachen="1" data-keep-open-wid="{{ wt.id }}">
+                    <div class="col-md-3">
+                        <label class="form-label">Name</label>
+                        <input type="text" name="name" class="form-control" value="{{ wt.name }}" required>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Vorhandenes Bild</label>
+                        <select name="existing_image" class="form-select">
+                            <option value="">— keins —</option>
+                            {% for img in existing_images %}
+                            <option value="{{ img }}" {% if wt.image == img %}selected{% endif %}>{{ img }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Oder hochladen</label>
+                        <input type="file" name="image_upload" class="form-control" accept="image/*">
+                    </div>
+                    <div class="col-md-3 d-flex gap-1">
+                        <button type="submit" class="btn btn-sm btn-outline-primary"><i class="bi bi-check-lg"></i> Speichern</button>
+                        <form method="post" action="/wachen/{{ wt.id }}/delete" class="d-inline" data-async-wachen="1" data-confirm-msg="Wachen-Typ &quot;{{ wt.name }}&quot; wirklich löschen?">
+                            <button type="submit" class="btn btn-sm btn-outline-danger">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </form>
+                    </div>
+                </form>
+
+                <!-- Levels table -->
+                <h5>Stufen</h5>
+                {% if wt.levels %}
+                <form method="post" action="/wachen/{{ wt.id }}/levels/save" id="levelsBulkForm-{{ wt.id }}" data-async-wachen="1" data-keep-open-wid="{{ wt.id }}"></form>
+                <table class="table table-sm table-striped">
+                    <thead>
+                        <tr><th style="width:60px">Stufe</th><th>Bezeichnung</th><th>Kosten (€)</th><th>Unterhalt (€)</th><th>Max. Fahrzeuge</th><th style="width:160px">Aktionen</th></tr>
+                    </thead>
+                    <tbody>
+                        {% for lvl in wt.levels %}
+                        <tr>
+                            <td>{{ lvl.level_number }}</td>
+                            <td>
+                                <input type="hidden" name="level_ids" value="{{ lvl.id }}" form="levelsBulkForm-{{ wt.id }}">
+                                <input type="text" name="level_name_{{ lvl.id }}" class="form-control form-control-sm" value="{{ lvl.name or '' }}" placeholder="(optional)" form="levelsBulkForm-{{ wt.id }}">
+                            </td>
+                            <td>
+                                <input type="number" step="0.01" name="level_cost_{{ lvl.id }}" class="form-control form-control-sm" value="{{ lvl.cost }}" form="levelsBulkForm-{{ wt.id }}">
+                            </td>
+                            <td>
+                                <input type="number" step="0.01" name="level_maintenance_cost_{{ lvl.id }}" class="form-control form-control-sm" value="{{ lvl.maintenance_cost }}" form="levelsBulkForm-{{ wt.id }}">
+                            </td>
+                            <td>
+                                <input type="number" name="level_max_vehicles_{{ lvl.id }}" class="form-control form-control-sm" value="{{ lvl.max_vehicles }}" min="0" form="levelsBulkForm-{{ wt.id }}">
+                            </td>
+                            <td>
+                                <form method="post" action="/wachen/levels/{{ lvl.id }}/delete" class="d-inline" data-async-wachen="1" data-keep-open-wid="{{ wt.id }}" data-confirm-msg="Stufe {{ lvl.level_number }} löschen?">
+                                    <button type="submit" class="btn btn-sm btn-outline-danger">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                    <tfoot>
+                        <tr class="fw-bold">
+                            <td></td>
+                            <td>Gesamtkosten</td>
+                            <td>{{ '{:,.0f}'.format(wt.levels|sum(attribute='cost')).replace(',', '.') }} €</td>
+                            <td class="text-muted small">pro aktiver Stufe</td>
+                            <td></td>
+                            <td class="text-end">
+                                <button type="submit" form="levelsBulkForm-{{ wt.id }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-check2-all me-1"></i>Alle Stufen speichern</button>
+                            </td>
+                        </tr>
+                    </tfoot>
+                </table>
+                {% else %}
+                <p class="text-muted">Noch keine Stufen definiert.</p>
+                {% endif %}
+
+                <!-- Add level -->
+                <form method="post" action="/wachen/{{ wt.id }}/levels/add" class="row g-2 align-items-end" data-async-wachen="1" data-keep-open-wid="{{ wt.id }}">
+                    <div class="col-auto">
+                        <input type="text" name="level_name" class="form-control form-control-sm" placeholder="Bezeichnung (optional)">
+                    </div>
+                    <div class="col-auto">
+                        <input type="number" step="0.01" name="level_cost" class="form-control form-control-sm" placeholder="Kosten (€)" value="0">
+                    </div>
+                    <div class="col-auto">
+                        <input type="number" step="0.01" name="level_maintenance_cost" class="form-control form-control-sm" placeholder="Unterhalt (€)" value="0">
+                    </div>
+                    <div class="col-auto">
+                        <input type="number" name="level_max_vehicles" class="form-control form-control-sm" placeholder="Max. Fahrzeuge" value="0" min="0">
+                    </div>
+                    <div class="col-auto">
+                        <button type="submit" class="btn btn-sm btn-success"><i class="bi bi-plus-lg me-1"></i>Stufe hinzufügen</button>
+                    </div>
+                </form>
+
+                <!-- Upgrades (Erweiterungen) -->
+                <h5 class="mt-4">Erweiterungen</h5>
+                {% if wt.upgrades %}
+                <form method="post" action="/wachen/{{ wt.id }}/upgrades/save" id="upgradesBulkForm-{{ wt.id }}" data-async-wachen="1" data-keep-open-wid="{{ wt.id }}"></form>
+                <table class="table table-sm table-striped">
+                    <thead>
+                        <tr><th>Name</th><th>Kosten (€)</th><th>Unterhalt (€)</th><th>Zusätzliche Stellplätze</th><th style="width:160px">Aktionen</th></tr>
+                    </thead>
+                    <tbody>
+                        {% for upg in wt.upgrades %}
+                        <tr>
+                            <td>
+                                <input type="hidden" name="upgrade_ids" value="{{ upg.id }}" form="upgradesBulkForm-{{ wt.id }}">
+                                <input type="text" name="upgrade_name_{{ upg.id }}" class="form-control form-control-sm" value="{{ upg.name }}" required form="upgradesBulkForm-{{ wt.id }}">
+                            </td>
+                            <td>
+                                <input type="number" step="0.01" name="upgrade_cost_{{ upg.id }}" class="form-control form-control-sm" value="{{ upg.cost }}" form="upgradesBulkForm-{{ wt.id }}">
+                            </td>
+                            <td>
+                                <input type="number" step="0.01" name="upgrade_maintenance_cost_{{ upg.id }}" class="form-control form-control-sm" value="{{ upg.maintenance_cost }}" form="upgradesBulkForm-{{ wt.id }}">
+                            </td>
+                            <td>
+                                <input type="number" name="upgrade_extra_slots_{{ upg.id }}" class="form-control form-control-sm" value="{{ upg.extra_slots }}" min="0" form="upgradesBulkForm-{{ wt.id }}">
+                            </td>
+                            <td>
+                                <form method="post" action="/wachen/upgrades/{{ upg.id }}/delete" class="d-inline" data-async-wachen="1" data-keep-open-wid="{{ wt.id }}" data-confirm-msg="Erweiterung &quot;{{ upg.name }}&quot; löschen?">
+                                    <button type="submit" class="btn btn-sm btn-outline-danger">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                    <tfoot>
+                        <tr class="fw-bold">
+                            <td>Gesamt</td>
+                            <td>{{ '{:,.0f}'.format(wt.upgrades|sum(attribute='cost')).replace(',', '.') }} €</td>
+                            <td>{{ '{:,.0f}'.format(wt.upgrades|sum(attribute='maintenance_cost')).replace(',', '.') }} €</td>
+                            <td></td>
+                            <td class="text-end">
+                                <button type="submit" form="upgradesBulkForm-{{ wt.id }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-check2-all me-1"></i>Alle Erweiterungen speichern</button>
+                            </td>
+                        </tr>
+                    </tfoot>
+                </table>
+                {% else %}
+                <p class="text-muted">Noch keine Erweiterungen definiert.</p>
+                {% endif %}
+
+                <!-- Add upgrade -->
+                <form method="post" action="/wachen/{{ wt.id }}/upgrades/add" class="row g-2 align-items-end" data-async-wachen="1" data-keep-open-wid="{{ wt.id }}">
+                    <div class="col-auto">
+                        <input type="text" name="upgrade_name" class="form-control form-control-sm" placeholder="Name" required>
+                    </div>
+                    <div class="col-auto">
+                        <input type="number" step="0.01" name="upgrade_cost" class="form-control form-control-sm" placeholder="Kosten (€)" value="0">
+                    </div>
+                    <div class="col-auto">
+                        <input type="number" step="0.01" name="upgrade_maintenance_cost" class="form-control form-control-sm" placeholder="Unterhalt (€)" value="0">
+                    </div>
+                    <div class="col-auto">
+                        <input type="number" name="upgrade_extra_slots" class="form-control form-control-sm" placeholder="Zusätzl. Stellplätze" value="0" min="0">
+                    </div>
+                    <div class="col-auto">
+                        <button type="submit" class="btn btn-sm btn-success"><i class="bi bi-plus-lg me-1"></i>Erweiterung hinzufügen</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="alert alert-info">Noch keine Wachen-Typen angelegt. Klicke auf „Neuer Wachen-Typ".</div>
+{% endif %}
+
+<!-- Add Wache Type Modal -->
+<div class="modal fade" id="addWacheModal" tabindex="-1">
+    <div class="modal-dialog">
+        <form method="post" action="/wachen/add" enctype="multipart/form-data" class="modal-content" data-async-wachen="1">
+            <div class="modal-header">
+                <h5 class="modal-title">Neuer Wachen-Typ</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">Name</label>
+                    <input type="text" name="name" class="form-control" required autofocus>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Vorhandenes Bild wählen</label>
+                    <select name="existing_image" class="form-select">
+                        <option value="">— keins —</option>
+                        {% for img in existing_images %}
+                        <option value="{{ img }}">{{ img }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Oder neues Bild hochladen</label>
+                    <input type="file" name="image_upload" class="form-control" accept="image/*">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Abbrechen</button>
+                <button type="submit" class="btn btn-primary"><i class="bi bi-plus-lg me-1"></i>Erstellen</button>
+            </div>
+        </form>
+    </div>
+</div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const rootSelector = '#wachenPageRoot';
+    const flashSelector = '#flashMessages';
+    const openStateKey = 'wachen-open-sections';
+
+    function readOpenState() {
+        try {
+            const raw = localStorage.getItem(openStateKey);
+            const parsed = raw ? JSON.parse(raw) : [];
+            return Array.isArray(parsed) ? parsed : [];
+        } catch (error) {
+            return [];
+        }
+    }
+
+    function writeOpenState(ids) {
+        localStorage.setItem(openStateKey, JSON.stringify(ids));
+    }
+
+    function getOpenIds(scope) {
+        return Array.from((scope || document).querySelectorAll('.accordion-collapse.show[id]')).map(function(el) {
+            return el.id;
+        });
+    }
+
+    function applyOpenIds(ids, scope) {
+        const root = scope || document;
+        const idSet = new Set(ids || []);
+        root.querySelectorAll('.accordion-collapse[id]').forEach(function(collapseEl) {
+            const shouldShow = idSet.has(collapseEl.id);
+            collapseEl.classList.toggle('show', shouldShow);
+            const button = root.querySelector('[data-bs-target="#' + collapseEl.id + '"]');
+            if (button) {
+                button.classList.toggle('collapsed', !shouldShow);
+                button.setAttribute('aria-expanded', shouldShow ? 'true' : 'false');
+            }
+        });
+    }
+
+    function bindAccordionTracking(scope) {
+        (scope || document).querySelectorAll('.accordion-collapse[id]').forEach(function(collapseEl) {
+            if (collapseEl.dataset.stateBound === '1') {
+                return;
+            }
+            collapseEl.dataset.stateBound = '1';
+            collapseEl.addEventListener('shown.bs.collapse', function() {
+                writeOpenState(getOpenIds(document));
+            });
+            collapseEl.addEventListener('hidden.bs.collapse', function() {
+                writeOpenState(getOpenIds(document));
+            });
+        });
+    }
+
+    function replaceFromResponse(html, openIds) {
+        const parser = new DOMParser();
+        const nextDoc = parser.parseFromString(html, 'text/html');
+        const nextRoot = nextDoc.querySelector(rootSelector);
+        const currentRoot = document.querySelector(rootSelector);
+        if (!nextRoot || !currentRoot) {
+            window.location.reload();
+            return;
+        }
+
+        const nextFlash = nextDoc.querySelector(flashSelector);
+        const currentFlash = document.querySelector(flashSelector);
+        if (nextFlash && currentFlash) {
+            currentFlash.innerHTML = nextFlash.innerHTML;
+        }
+
+        currentRoot.innerHTML = nextRoot.innerHTML;
+        bindAccordionTracking(currentRoot);
+        applyOpenIds(openIds, currentRoot);
+        writeOpenState(openIds);
+    }
+
+    bindAccordionTracking(document);
+    const savedIds = readOpenState();
+    if (savedIds.length) {
+        applyOpenIds(savedIds, document);
+    }
+
+    document.addEventListener('submit', function(event) {
+        const form = event.target;
+        if (!form || form.tagName !== 'FORM' || form.dataset.asyncWachen !== '1') {
+            return;
+        }
+        const confirmMsg = form.dataset.confirmMsg;
+        if (confirmMsg && !window.confirm(confirmMsg)) {
+            event.preventDefault();
+            return;
+        }
+        event.preventDefault();
+
+        const openIds = getOpenIds(document);
+        if (form.dataset.keepOpenWid) {
+            openIds.push('wt-' + form.dataset.keepOpenWid);
+        }
+        const stableOpenIds = Array.from(new Set(openIds));
+
+        const modalEl = form.closest('.modal');
+        if (modalEl) {
+            const modalInstance = bootstrap.Modal.getInstance(modalEl);
+            if (modalInstance) {
+                modalInstance.hide();
+            }
+        }
+
+        const submitButtons = form.querySelectorAll('button[type="submit"], input[type="submit"]');
+        submitButtons.forEach(function(btn) { btn.disabled = true; });
+
+        fetch(form.action, {
+            method: (form.method || 'POST').toUpperCase(),
+            body: new FormData(form),
+            headers: {'X-Requested-With': 'XMLHttpRequest'}
+        })
+            .then(function(response) { return response.text(); })
+            .then(function(html) {
+                replaceFromResponse(html, stableOpenIds);
+            })
+            .catch(function() {
+                window.location.reload();
+            })
+            .finally(function() {
+                submitButtons.forEach(function(btn) { btn.disabled = false; });
+            });
+    });
+});
+</script>
+{% endblock %}
