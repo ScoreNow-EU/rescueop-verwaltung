@@ -14,6 +14,270 @@ from sqlalchemy.orm import joinedload, selectinload
 planner_bp = Blueprint('planner', __name__)
 
 
+def _planner_plan_item_load_options():
+    return [
+        joinedload(PlanItem.wache_type).selectinload(WacheType.levels),
+        joinedload(PlanItem.wache_org_type),
+        joinedload(PlanItem.wache_location),
+        joinedload(PlanItem.created_wache).joinedload(MyWache.wache_type).selectinload(WacheType.levels),
+        joinedload(PlanItem.target_wache).joinedload(MyWache.wache_type).selectinload(WacheType.levels),
+        joinedload(PlanItem.vehicle_wache).joinedload(MyWache.wache_type).selectinload(WacheType.levels),
+        joinedload(PlanItem.extension_wache).joinedload(MyWache.wache_type),
+        joinedload(PlanItem.vehicle_type),
+        joinedload(PlanItem.wache_upgrade),
+        joinedload(PlanItem.target_wache_plan_item).joinedload(PlanItem.wache_type).selectinload(WacheType.levels),
+        joinedload(PlanItem.vehicle_wache_plan_item).joinedload(PlanItem.wache_type).selectinload(WacheType.levels),
+        joinedload(PlanItem.extension_wache_plan_item).joinedload(PlanItem.wache_type),
+        selectinload(PlanItem.selected_modules),
+    ]
+
+
+def _planner_index_context():
+    plan_item_load = _planner_plan_item_load_options()
+    items = scoped(PlanItem).options(*plan_item_load).filter_by(done=False).order_by(PlanItem.priority).all()
+    done_items_total = scoped(PlanItem).filter_by(done=True).count()
+    vehicle_types = scoped(VehicleType).options(selectinload(VehicleType.standard_modules)).order_by(VehicleType.is_standard.desc(), VehicleType.name).all()
+    wache_types = scoped(WacheType).options(selectinload(WacheType.levels), selectinload(WacheType.upgrades)).order_by(WacheType.name).all()
+    my_wachen = scoped(MyWache).options(
+        joinedload(MyWache.wache_type).selectinload(WacheType.levels),
+        joinedload(MyWache.org_type),
+        joinedload(MyWache.location),
+        selectinload(MyWache.vehicles),
+        selectinload(MyWache.installed_upgrades),
+    ).order_by(MyWache.name).all()
+    planner_wachen = [_make_real_wache_entry(w) for w in my_wachen]
+    planner_wachen.extend(
+        _make_planned_wache_entry(item)
+        for item in items
+        if item.category == 'wache_buy'
+    )
+    planner_wachen.sort(key=lambda w: (w.name or '').lower())
+    all_modules = scoped(VehicleModule).order_by(VehicleModule.name).all()
+    org_types = scoped(NamingOrgType).order_by(NamingOrgType.abbreviation).all()
+    locations = scoped(NamingLocation).order_by(NamingLocation.abbreviation).all()
+    naming_presets = scoped(NamingPreset).order_by(NamingPreset.is_default.desc(), NamingPreset.name).all()
+    org_to_wache_type = {}
+    for org in org_types:
+        matched = None
+        if org.default_wache_type_id:
+            matched = next((wt for wt in wache_types if wt.id == org.default_wache_type_id), None)
+        if not matched:
+            matched = _match_wache_type_for_org(org, wache_types)
+        if matched:
+            org_to_wache_type[org.id] = matched.id
+
+    std_vehicle_counts = {wt.id: 0 for wt in wache_types}
+    detailed_items = scoped(WacheStandardVehicleItem).all()
+    if detailed_items:
+        for cfg in detailed_items:
+            std_vehicle_counts[cfg.wache_type_id] = std_vehicle_counts.get(cfg.wache_type_id, 0) + max(1, cfg.quantity or 1)
+    else:
+        for cfg in scoped(WacheStandardVehicle).all():
+            std_vehicle_counts[cfg.wache_type_id] = std_vehicle_counts.get(cfg.wache_type_id, 0) + max(0, cfg.quantity or 0)
+
+    wache_veh_counts = {}
+    for w in planner_wachen:
+        wache_veh_counts[w.ref] = {}
+    for w in my_wachen:
+        counts = wache_veh_counts.setdefault(f'w:{w.id}', {})
+        for v in w.vehicles:
+            key = str(v.vehicle_type_id)
+            counts[key] = counts.get(key, 0) + 1
+    for item in items:
+        if item.category != 'vehicle' or not item.vehicle_type_id:
+            continue
+        wkey = f'w:{item.vehicle_wache_id}' if item.vehicle_wache_id else _planned_wache_ref_from_item(item)
+        if not wkey:
+            continue
+        tkey = str(item.vehicle_type_id)
+        if wkey not in wache_veh_counts:
+            wache_veh_counts[wkey] = {}
+        wache_veh_counts[wkey][tkey] = wache_veh_counts[wkey].get(tkey, 0) + 1
+
+    org_wache_next = {}
+    for org in org_types:
+        if not org.no_location:
+            continue
+        max_num = 0
+        pattern = re.compile(rf'^{re.escape(org.abbreviation)}(\d+)$')
+        for w in my_wachen:
+            match = pattern.match((w.name or '').strip())
+            if not match:
+                continue
+            max_num = max(max_num, int(match.group(1)))
+        for item in items:
+            if item.category != 'wache_buy' or not item.wache_name:
+                continue
+            match = pattern.match(item.wache_name.strip())
+            if not match:
+                continue
+            max_num = max(max_num, int(match.group(1)))
+        org_wache_next[org.abbreviation] = max_num + 1
+
+    running = []
+    total = 0
+    for item in items:
+        total += item.cost
+        running.append(total)
+
+    sections = []
+    current_label = None
+    current_subtotal = 0
+    current_start = 0
+    for idx, item in enumerate(items):
+        if item.category == 'divider':
+            if idx > 0:
+                section_items = items[current_start:idx]
+                divider_item = section_items[0] if section_items and section_items[0].category == 'divider' else None
+                row_items = section_items[1:] if divider_item else section_items
+                sections.append({'label': current_label, 'subtotal': current_subtotal,
+                                 'start': current_start, 'end': idx,
+                                 'divider_id': divider_item.id if divider_item else None,
+                                 'item_ids': [row.id for row in row_items]})
+            current_label = item.notes or 'Abschnitt'
+            current_subtotal = 0
+            current_start = idx
+        else:
+            current_subtotal += item.cost
+    if items:
+        section_items = items[current_start:len(items)]
+        divider_item = section_items[0] if section_items and section_items[0].category == 'divider' else None
+        row_items = section_items[1:] if divider_item else section_items
+        sections.append({'label': current_label, 'subtotal': current_subtotal,
+                         'start': current_start, 'end': len(items),
+                         'divider_id': divider_item.id if divider_item else None,
+                         'item_ids': [row.id for row in row_items]})
+
+    wache_state = {}
+    for w in planner_wachen:
+        if w.kind == 'real':
+            base_max = 0
+            for l in w.wache_type.levels:
+                if l.level_number == w.current_level:
+                    base_max = l.max_vehicles
+                    break
+            wache_state[w.ref] = {
+                'count': len(w.vehicles),
+                'max': w.max_vehicles,
+                '_base_max': base_max,
+                'level': w.current_level,
+                'name': w.name,
+                'wache_type': w.wache_type,
+            }
+        else:
+            wache_state[w.ref] = {
+                'count': 0,
+                'max': w.max_vehicles,
+                '_base_max': w.max_vehicles,
+                'level': w.current_level,
+                'name': w.name,
+                'wache_type': w.wache_type,
+            }
+
+    for item in items:
+        if item.category != 'vehicle' or not item.vehicle_type_id:
+            continue
+        ref = f'w:{item.vehicle_wache_id}' if item.vehicle_wache_id else _planned_wache_ref_from_item(item)
+        if not ref:
+            continue
+        st = wache_state.get(ref)
+        if st:
+            st['count'] += 1
+
+    capacity_info = []
+    for item in items:
+        info = None
+        if item.category == 'wache_buy' and item.wache_type_id:
+            wt = item.wache_type
+            first_level = min(wt.levels, key=lambda l: l.level_number) if wt and wt.levels else None
+            max_v = first_level.max_vehicles if first_level else 0
+            key = f'p:{item.id}'
+            wache_state[key] = {
+                'count': 0, 'max': max_v, '_base_max': max_v, 'level': 1,
+                'name': item.wache_name, 'wache_type': wt,
+            }
+            info = {'current': 0, 'max': max_v}
+        elif item.category == 'wache_upgrade' and item.target_wache_id and item.target_level:
+            key = f'w:{item.target_wache_id}'
+            st = wache_state.get(key)
+            if st:
+                wache_type = st.get('wache_type') or (item.target_wache.wache_type if item.target_wache else None)
+                new_base = 0
+                if wache_type:
+                    for l in wache_type.levels:
+                        if l.level_number == item.target_level:
+                            new_base = l.max_vehicles
+                            break
+                old_base = st.get('_base_max', st['max'])
+                bonus_slots = st['max'] - old_base
+                st['_base_max'] = new_base
+                st['max'] = new_base + bonus_slots
+                st['level'] = item.target_level
+                info = {'current': st['count'], 'max': st['max']}
+        elif item.category == 'wache_upgrade' and item.target_wache_plan_item_id and item.target_level:
+            key = f'p:{item.target_wache_plan_item_id}'
+            st = wache_state.get(key)
+            if st:
+                wache_type = st.get('wache_type') or (item.target_wache.wache_type if item.target_wache else None)
+                new_base = 0
+                if wache_type:
+                    for l in wache_type.levels:
+                        if l.level_number == item.target_level:
+                            new_base = l.max_vehicles
+                            break
+                old_base = st.get('_base_max', st['max'])
+                bonus_slots = st['max'] - old_base
+                st['_base_max'] = new_base
+                st['max'] = new_base + bonus_slots
+                st['level'] = item.target_level
+                info = {'current': st['count'], 'max': st['max']}
+        elif item.category == 'wache_extension' and item.extension_wache_id and item.wache_upgrade:
+            key = f'w:{item.extension_wache_id}'
+            st = wache_state.get(key)
+            if st:
+                st['max'] += item.wache_upgrade.extra_slots
+                info = {'current': st['count'], 'max': st['max']}
+        elif item.category == 'wache_extension' and item.extension_wache_plan_item_id and item.wache_upgrade:
+            key = f'p:{item.extension_wache_plan_item_id}'
+            st = wache_state.get(key)
+            if st:
+                st['max'] += item.wache_upgrade.extra_slots
+                info = {'current': st['count'], 'max': st['max']}
+        elif item.category == 'vehicle' and item.vehicle_wache_id:
+            key = f'w:{item.vehicle_wache_id}'
+            st = wache_state.get(key)
+            if st:
+                st['count'] += 1
+                info = {'current': st['count'], 'max': st['max']}
+        elif item.category == 'vehicle' and item.vehicle_wache_plan_item_id:
+            key = f'p:{item.vehicle_wache_plan_item_id}'
+            st = wache_state.get(key)
+            if st:
+                st['count'] += 1
+                info = {'current': st['count'], 'max': st['max']}
+        capacity_info.append(info)
+
+    return {
+        'items': items,
+        'done_items_total': done_items_total,
+        'running': running,
+        'sections': sections,
+        'vehicle_types': vehicle_types,
+        'wache_types': wache_types,
+        'my_wachen': my_wachen,
+        'planner_wachen': planner_wachen,
+        'all_modules': all_modules,
+        'capacity_info': capacity_info,
+        'org_types': org_types,
+        'locations': locations,
+        'naming_presets': naming_presets,
+        'org_to_wache_type_json': org_to_wache_type,
+        'wache_veh_counts_json': wache_veh_counts,
+        'org_wache_next_json': org_wache_next,
+        'std_vehicle_counts_json': std_vehicle_counts,
+    }
+
+
 def _next_priority(done_state=None):
     query = scoped(PlanItem)
     if done_state is not None:
@@ -116,262 +380,33 @@ def _match_wache_type_for_org(org_type, wache_types):
 
 @planner_bp.route('/planner')
 def index():
-    plan_item_load = [
-        joinedload(PlanItem.wache_type).selectinload(WacheType.levels),
-        joinedload(PlanItem.wache_org_type),
-        joinedload(PlanItem.wache_location),
-        joinedload(PlanItem.created_wache).joinedload(MyWache.wache_type).selectinload(WacheType.levels),
-        joinedload(PlanItem.target_wache).joinedload(MyWache.wache_type).selectinload(WacheType.levels),
-        joinedload(PlanItem.vehicle_wache).joinedload(MyWache.wache_type).selectinload(WacheType.levels),
-        joinedload(PlanItem.extension_wache).joinedload(MyWache.wache_type),
-        joinedload(PlanItem.vehicle_type),
-        joinedload(PlanItem.wache_upgrade),
-        joinedload(PlanItem.target_wache_plan_item).joinedload(PlanItem.wache_type).selectinload(WacheType.levels),
-        joinedload(PlanItem.vehicle_wache_plan_item).joinedload(PlanItem.wache_type).selectinload(WacheType.levels),
-        joinedload(PlanItem.extension_wache_plan_item).joinedload(PlanItem.wache_type),
-        selectinload(PlanItem.selected_modules),
-    ]
-    items = scoped(PlanItem).options(*plan_item_load).filter_by(done=False).order_by(PlanItem.priority).all()
+    return render_template('planner.html', active_tab='planner', **_planner_index_context())
+
+
+@planner_bp.route('/planner/done_items')
+def done_items_fragment():
+    plan_item_load = _planner_plan_item_load_options()
     done_items_total = scoped(PlanItem).filter_by(done=True).count()
     done_items = list(reversed(
         scoped(PlanItem).options(*plan_item_load).filter_by(done=True).order_by(PlanItem.priority.desc()).limit(50).all()
     ))
-    vehicle_types = scoped(VehicleType).options(selectinload(VehicleType.standard_modules)).order_by(VehicleType.is_standard.desc(), VehicleType.name).all()
-    wache_types = scoped(WacheType).options(selectinload(WacheType.levels), selectinload(WacheType.upgrades)).order_by(WacheType.name).all()
-    my_wachen = scoped(MyWache).options(
-        joinedload(MyWache.wache_type).selectinload(WacheType.levels),
-        joinedload(MyWache.org_type),
-        joinedload(MyWache.location),
-        selectinload(MyWache.vehicles),
-        selectinload(MyWache.installed_upgrades),
-    ).order_by(MyWache.name).all()
-    planner_wachen = [_make_real_wache_entry(w) for w in my_wachen]
-    planner_wachen.extend(
-        _make_planned_wache_entry(item)
-        for item in items
-        if item.category == 'wache_buy'
+    return render_template('planner_done_items.html', done_items=done_items, done_items_total=done_items_total)
+
+
+@planner_bp.route('/planner/section/<int:section_index>')
+def section_fragment(section_index):
+    context = _planner_index_context()
+    sections = context['sections']
+    if section_index < 0 or section_index >= len(sections):
+        return ('', 404)
+    return render_template(
+        'planner_section_items.html',
+        sec=sections[section_index],
+        section_index=section_index,
+        items=context['items'],
+        running=context['running'],
+        capacity_info=context['capacity_info'],
     )
-    planner_wachen.sort(key=lambda w: (w.name or '').lower())
-    all_modules = scoped(VehicleModule).order_by(VehicleModule.name).all()
-    org_types = scoped(NamingOrgType).order_by(NamingOrgType.abbreviation).all()
-    locations = scoped(NamingLocation).order_by(NamingLocation.abbreviation).all()
-    naming_presets = scoped(NamingPreset).order_by(NamingPreset.is_default.desc(), NamingPreset.name).all()
-    org_to_wache_type = {}
-    for org in org_types:
-        matched = None
-        if org.default_wache_type_id:
-            matched = next((wt for wt in wache_types if wt.id == org.default_wache_type_id), None)
-        if not matched:
-            matched = _match_wache_type_for_org(org, wache_types)
-        if matched:
-            org_to_wache_type[org.id] = matched.id
-
-    std_vehicle_counts = {wt.id: 0 for wt in wache_types}
-    detailed_items = scoped(WacheStandardVehicleItem).all()
-    if detailed_items:
-        for cfg in detailed_items:
-            std_vehicle_counts[cfg.wache_type_id] = std_vehicle_counts.get(cfg.wache_type_id, 0) + max(1, cfg.quantity or 1)
-    else:
-        for cfg in scoped(WacheStandardVehicle).all():
-            std_vehicle_counts[cfg.wache_type_id] = std_vehicle_counts.get(cfg.wache_type_id, 0) + max(0, cfg.quantity or 0)
-
-    # Used by planner naming helpers in the template script.
-    wache_veh_counts = {}
-    for w in planner_wachen:
-        wache_veh_counts[w.ref] = {}
-    for w in my_wachen:
-        counts = wache_veh_counts.setdefault(f'w:{w.id}', {})
-        for v in w.vehicles:
-            key = str(v.vehicle_type_id)
-            counts[key] = counts.get(key, 0) + 1
-
-    # Also count planned (not done) vehicle purchases so generated nicknames
-    # continue with the next free number after existing + planned vehicles.
-    for item in items:
-        if item.category != 'vehicle' or not item.vehicle_type_id:
-            continue
-        wkey = f'w:{item.vehicle_wache_id}' if item.vehicle_wache_id else _planned_wache_ref_from_item(item)
-        if not wkey:
-            continue
-        tkey = str(item.vehicle_type_id)
-        if wkey not in wache_veh_counts:
-            wache_veh_counts[wkey] = {}
-        wache_veh_counts[wkey][tkey] = wache_veh_counts[wkey].get(tkey, 0) + 1
-
-    org_wache_next = {}
-    for org in org_types:
-        if not org.no_location:
-            continue
-        max_num = 0
-        pattern = re.compile(rf'^{re.escape(org.abbreviation)}(\d+)$')
-        for w in my_wachen:
-            match = pattern.match((w.name or '').strip())
-            if not match:
-                continue
-            max_num = max(max_num, int(match.group(1)))
-        for item in items:
-            if item.category != 'wache_buy' or not item.wache_name:
-                continue
-            match = pattern.match(item.wache_name.strip())
-            if not match:
-                continue
-            max_num = max(max_num, int(match.group(1)))
-        org_wache_next[org.abbreviation] = max_num + 1
-
-    # Running total (skipping dividers which have cost 0)
-    running = []
-    total = 0
-    for item in items:
-        total += item.cost
-        running.append(total)
-
-    # Build section subtotals: split items at dividers
-    sections = []  # list of {'label': str|None, 'subtotal': float, 'start': int}
-    current_label = None
-    current_subtotal = 0
-    current_start = 0
-    for idx, item in enumerate(items):
-        if item.category == 'divider':
-            if idx > 0:
-                sections.append({'label': current_label, 'subtotal': current_subtotal,
-                                 'start': current_start, 'end': idx})
-            current_label = item.notes or 'Abschnitt'
-            current_subtotal = 0
-            current_start = idx
-        else:
-            current_subtotal += item.cost
-    if items:
-        sections.append({'label': current_label, 'subtotal': current_subtotal,
-                         'start': current_start, 'end': len(items)})
-
-    # ---------- Vehicle capacity info per item ----------------------------
-    wache_state = {}
-    for w in planner_wachen:
-        if w.kind == 'real':
-            base_max = 0
-            for l in w.wache_type.levels:
-                if l.level_number == w.current_level:
-                    base_max = l.max_vehicles
-                    break
-            wache_state[w.ref] = {
-                'count': len(w.vehicles),
-                'max': w.max_vehicles,
-                '_base_max': base_max,
-                'level': w.current_level,
-                'name': w.name,
-                'wache_type': w.wache_type,
-            }
-        else:
-            wache_state[w.ref] = {
-                'count': 0,
-                'max': w.max_vehicles,
-                '_base_max': w.max_vehicles,
-                'level': w.current_level,
-                'name': w.name,
-                'wache_type': w.wache_type,
-            }
-
-    for item in items:
-        if item.category != 'vehicle' or not item.vehicle_type_id:
-            continue
-        ref = f'w:{item.vehicle_wache_id}' if item.vehicle_wache_id else _planned_wache_ref_from_item(item)
-        if not ref:
-            continue
-        st = wache_state.get(ref)
-        if st:
-            st['count'] += 1
-
-    capacity_info = []  # parallel to items: dict or None
-    for item in items:
-        info = None
-        if item.category == 'wache_buy' and item.wache_type_id:
-            wt = item.wache_type
-            first_level = min(wt.levels, key=lambda l: l.level_number) if wt and wt.levels else None
-            max_v = first_level.max_vehicles if first_level else 0
-            key = f'p:{item.id}'
-            wache_state[key] = {
-                'count': 0, 'max': max_v, '_base_max': max_v, 'level': 1,
-                'name': item.wache_name, 'wache_type': wt,
-            }
-            info = {'current': 0, 'max': max_v}
-
-        elif item.category == 'wache_upgrade' and item.target_wache_id and item.target_level:
-            key = f'w:{item.target_wache_id}'
-            st = wache_state.get(key)
-            if st:
-                wache_type = st.get('wache_type') or (item.target_wache.wache_type if item.target_wache else None)
-                new_base = 0
-                if wache_type:
-                    for l in wache_type.levels:
-                        if l.level_number == item.target_level:
-                            new_base = l.max_vehicles
-                            break
-                old_base = st.get('_base_max', st['max'])
-                bonus_slots = st['max'] - old_base
-                st['_base_max'] = new_base
-                st['max'] = new_base + bonus_slots
-                st['level'] = item.target_level
-                info = {'current': st['count'], 'max': st['max']}
-        elif item.category == 'wache_upgrade' and item.target_wache_plan_item_id and item.target_level:
-            key = f'p:{item.target_wache_plan_item_id}'
-            st = wache_state.get(key)
-            if st:
-                wache_type = st.get('wache_type') or (item.target_wache.wache_type if item.target_wache else None)
-                new_base = 0
-                if wache_type:
-                    for l in wache_type.levels:
-                        if l.level_number == item.target_level:
-                            new_base = l.max_vehicles
-                            break
-                old_base = st.get('_base_max', st['max'])
-                bonus_slots = st['max'] - old_base
-                st['_base_max'] = new_base
-                st['max'] = new_base + bonus_slots
-                st['level'] = item.target_level
-                info = {'current': st['count'], 'max': st['max']}
-
-        elif item.category == 'wache_extension' and item.extension_wache_id and item.wache_upgrade:
-            key = f'w:{item.extension_wache_id}'
-            st = wache_state.get(key)
-            if st:
-                st['max'] += item.wache_upgrade.extra_slots
-                info = {'current': st['count'], 'max': st['max']}
-        elif item.category == 'wache_extension' and item.extension_wache_plan_item_id and item.wache_upgrade:
-            key = f'p:{item.extension_wache_plan_item_id}'
-            st = wache_state.get(key)
-            if st:
-                st['max'] += item.wache_upgrade.extra_slots
-                info = {'current': st['count'], 'max': st['max']}
-
-        elif item.category == 'vehicle' and item.vehicle_wache_id:
-            key = f'w:{item.vehicle_wache_id}'
-            st = wache_state.get(key)
-            if st:
-                st['count'] += 1
-                info = {'current': st['count'], 'max': st['max']}
-        elif item.category == 'vehicle' and item.vehicle_wache_plan_item_id:
-            key = f'p:{item.vehicle_wache_plan_item_id}'
-            st = wache_state.get(key)
-            if st:
-                st['count'] += 1
-                info = {'current': st['count'], 'max': st['max']}
-
-        capacity_info.append(info)
-
-    return render_template('planner.html', active_tab='planner',
-                           items=items, done_items=done_items, running=running,
-                           done_items_total=done_items_total,
-                           sections=sections,
-                           vehicle_types=vehicle_types, wache_types=wache_types,
-                           my_wachen=my_wachen, planner_wachen=planner_wachen,
-                           all_modules=all_modules,
-                           capacity_info=capacity_info,
-                           org_types=org_types, locations=locations,
-                           naming_presets=naming_presets,
-                           org_to_wache_type_json=org_to_wache_type,
-                           wache_veh_counts_json=wache_veh_counts,
-                           org_wache_next_json=org_wache_next,
-                           std_vehicle_counts_json=std_vehicle_counts)
 
 
 # ---------- Add: Wache kaufen ---------------------------------------------

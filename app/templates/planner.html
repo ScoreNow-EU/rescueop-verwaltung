@@ -25,21 +25,20 @@
     </div>
     <div class="card-body p-0">
         <div class="accordion" id="plannerAccordion">
-            {% set ns = namespace(row_num=0) %}
             {% for sec in sections %}
-            {% set section_items = items[sec.start:sec.end] %}
-            {% set divider_item = section_items[0] if section_items and section_items[0].category == 'divider' else None %}
-            {% set section_rows = section_items[1:] if divider_item else section_items %}
             {% set section_id = 'planner-section-' ~ loop.index %}
-            <div class="accordion-item border-0 border-bottom rounded-0 planner-section"{% if divider_item %} data-divider-id="{{ divider_item.id }}"{% endif %}>
+              <div class="accordion-item border-0 border-bottom rounded-0 planner-section"
+                  data-section-index="{{ loop.index0 }}"
+                  data-divider-id="{{ sec.divider_id or '' }}"
+                  data-item-ids="{{ sec.item_ids|join(',') }}">
                 <h2 class="accordion-header" id="{{ section_id }}-header">
-                    <button class="accordion-button{% if not divider_item %} collapsed{% endif %}" type="button"
+                    <button class="accordion-button collapsed" type="button"
                             data-bs-toggle="collapse" data-bs-target="#{{ section_id }}-collapse"
-                            aria-expanded="{{ 'true' if divider_item else 'false' }}">
+                            aria-expanded="false">
                         <span class="d-flex align-items-center gap-2 w-100">
-                            <i class="bi {% if divider_item %}bi-distribute-vertical{% else %}bi-list-ul{% endif %}"></i>
-                            {% if divider_item %}
-                            <span class="fw-bold">{{ divider_item.notes or 'Abschnitt' }}</span>
+                            <i class="bi {% if sec.label %}bi-distribute-vertical{% else %}bi-list-ul{% endif %}"></i>
+                            {% if sec.label %}
+                            <span class="fw-bold">{{ sec.label }}</span>
                             {% else %}
                             <span class="fw-bold text-muted">Vergangene Planung ohne Abschnitt</span>
                             {% endif %}
@@ -47,111 +46,9 @@
                         </span>
                     </button>
                 </h2>
-                <div id="{{ section_id }}-collapse" class="accordion-collapse collapse{% if divider_item %} show{% endif %}">
-                    <div class="accordion-body p-0">
-                        {% if divider_item %}
-                        <div class="px-3 pt-3 d-flex gap-2 align-items-start flex-wrap">
-                            <form method="post" action="/planner/{{ divider_item.id }}/rename_divider" class="d-flex gap-2 flex-grow-1" data-async="1" data-keep-open-id="{{ section_id }}-collapse">
-                                <input type="text" name="divider_label" value="{{ divider_item.notes or '' }}" class="form-control form-control-sm fw-bold" style="max-width:320px">
-                                <button class="btn btn-sm btn-outline-secondary" title="Umbenennen"><i class="bi bi-check-lg"></i></button>
-                            </form>
-                            <form method="post" action="/planner/{{ divider_item.id }}/delete" onsubmit="return confirm('Abschnitt-Trenner löschen?')" data-async="1" data-keep-open-id="{{ section_id }}-collapse">
-                                <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
-                            </form>
-                        </div>
-                        {% endif %}
-                        <div class="table-responsive">
-                            <table class="table table-hover mb-0">
-                                <thead>
-                                    <tr>
-                                        <th style="width:40px"><i class="bi bi-grip-vertical"></i></th>
-                                        <th style="width:40px">#</th>
-                                        <th>Kategorie</th>
-                                        <th>Beschreibung</th>
-                                        <th class="text-center">Fahrzeuge</th>
-                                        <th class="text-end">Kosten</th>
-                                        <th class="text-end">Laufende Summe</th>
-                                        <th style="width:140px">Aktionen</th>
-                                    </tr>
-                                </thead>
-                                <tbody class="section-items">
-                                    {% for item in section_rows %}
-                                    {% set ns.row_num = ns.row_num + 1 %}
-                                    {% set item_idx = sec.start + loop.index0 + (1 if divider_item else 0) %}
-                                    <tr data-id="{{ item.id }}">
-                                        <td class="drag-handle"><i class="bi bi-grip-vertical text-muted"></i></td>
-                                        <td>{{ ns.row_num }}</td>
-                                        <td>
-                                            {% if item.category == 'wache_buy' %}
-                                            <span class="badge bg-warning text-dark"><i class="bi bi-building me-1"></i>Neue Wache</span>
-                                            {% elif item.category == 'wache_upgrade' %}
-                                            <span class="badge bg-warning text-dark"><i class="bi bi-arrow-up-circle me-1"></i>Ausbau</span>
-                                            {% elif item.category == 'wache_extension' %}
-                                            <span class="badge bg-info"><i class="bi bi-wrench me-1"></i>Erweiterung</span>
-                                            {% elif item.category == 'vehicle' %}
-                                            <span class="badge bg-primary"><i class="bi bi-truck me-1"></i>Fahrzeug</span>
-                                            {% endif %}
-                                        </td>
-                                        <td>
-                                            {% if item.category == 'vehicle' %}
-                                                {% if item.vehicle_nickname %}
-                                                <div class="d-flex align-items-center gap-2">
-                                                    <strong>{{ item.vehicle_nickname }}</strong>
-                                                    <button type="button" class="btn btn-link btn-sm p-0 text-muted" style="line-height:1" onclick="toggleNicknameEdit({{ item.id }})">
-                                                        <i class="bi bi-pencil-fill" style="font-size:.75rem"></i>
-                                                    </button>
-                                                </div>
-                                                <small class="text-muted">{{ item.vehicle_type.name if item.vehicle_type else '?' }}{% if item.vehicle_wache %} → {{ item.vehicle_wache.name }}{% endif %}{% if item.selected_modules %} · {{ item.selected_modules | map(attribute='name') | join(', ') }}{% endif %}</small>
-                                                {% else %}
-                                                <div class="d-flex align-items-center gap-2">
-                                                    <span class="text-muted fst-italic">kein Rufname</span>
-                                                    <button type="button" class="btn btn-link btn-sm p-0 text-primary" style="line-height:1" onclick="toggleNicknameEdit({{ item.id }})">
-                                                        <i class="bi bi-pencil-fill" style="font-size:.75rem"></i> setzen
-                                                    </button>
-                                                </div>
-                                                <small class="text-muted">{{ item.description }}</small>
-                                                {% endif %}
-                                                <form method="post" action="/planner/{{ item.id }}/set_nickname" id="nicknameForm{{ item.id }}" class="d-none mt-1" data-async="1" data-keep-open-id="{{ section_id }}-collapse">
-                                                    <div class="input-group input-group-sm">
-                                                        <input type="text" name="vehicle_nickname" class="form-control" value="{{ item.vehicle_nickname or '' }}" placeholder="Rufname">
-                                                        <button type="submit" class="btn btn-outline-primary"><i class="bi bi-check-lg"></i></button>
-                                                        <button type="button" class="btn btn-outline-secondary" onclick="toggleNicknameEdit({{ item.id }})"><i class="bi bi-x-lg"></i></button>
-                                                    </div>
-                                                </form>
-                                            {% else %}
-                                            {{ item.description }}
-                                            {% endif %}
-                                            {% if item.notes %}<br><small class="text-muted">{{ item.notes }}</small>{% endif %}
-                                        </td>
-                                        <td class="text-center">
-                                            {% set cap = capacity_info[item_idx] %}
-                                            {% if cap %}
-                                                {% if cap.max > 0 %}
-                                                <span class="badge {% if cap.current > cap.max %}bg-danger{% elif cap.current == cap.max %}bg-warning text-dark{% else %}bg-success{% endif %}">
-                                                    {{ cap.current }}/{{ cap.max }}
-                                                </span>
-                                                {% else %}
-                                                <span class="badge bg-secondary">{{ cap.current }}/?</span>
-                                                {% endif %}
-                                            {% endif %}
-                                        </td>
-                                        <td class="text-end">{{ '{:,.0f}'.format(item.cost).replace(',', '.') }} €</td>
-                                        <td class="text-end fw-bold">{{ '{:,.0f}'.format(running[item_idx]).replace(',', '.') }} €</td>
-                                        <td>
-                                            <div class="d-flex gap-1">
-                                                <form method="post" action="/planner/{{ item.id }}/done" data-async="1" data-keep-open-id="{{ section_id }}-collapse">
-                                                    <button class="btn btn-sm btn-outline-success" title="Erledigt &amp; übernehmen"><i class="bi bi-check-lg"></i></button>
-                                                </form>
-                                                <form method="post" action="/planner/{{ item.id }}/delete" onsubmit="return confirm('Eintrag löschen?')" data-async="1" data-keep-open-id="{{ section_id }}-collapse">
-                                                    <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
-                                                </form>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                    {% endfor %}
-                                </tbody>
-                            </table>
-                        </div>
+                <div id="{{ section_id }}-collapse" class="accordion-collapse collapse">
+                    <div class="accordion-body p-0 planner-section-content" data-section-index="{{ loop.index0 }}" data-loaded="0">
+                        <div class="px-3 py-3 text-muted small">Abschnitt wird bei Bedarf geladen…</div>
                     </div>
                 </div>
             </div>
@@ -163,62 +60,19 @@
 <div class="alert alert-info">Noch keine Einträge im Planer.</div>
 {% endif %}
 
-{% if done_items %}
+{% if done_items_total %}
 <div class="card mt-4">
     <div class="accordion" id="plannerDoneAccordion">
         <div class="accordion-item">
             <h2 class="accordion-header">
                 <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#doneSectionCollapse" aria-expanded="false">
                     <i class="bi bi-check-circle me-2"></i><strong>Vergangenheit</strong>
-                    <span class="badge bg-success ms-3">{{ done_items_total or done_items|length }} Einträge</span>
+                    <span class="badge bg-success ms-3">{{ done_items_total }} Einträge</span>
                 </button>
             </h2>
             <div id="doneSectionCollapse" class="accordion-collapse collapse">
-                <div class="accordion-body p-0">
-                    {% if (done_items_total or 0) > (done_items|length) %}
-                    <div class="px-3 py-2 small text-muted border-bottom">
-                        Aus Performance-Gründen werden hier die letzten {{ done_items|length }} erledigten Einträge angezeigt.
-                    </div>
-                    {% endif %}
-                    <table class="table table-sm mb-0">
-                        <thead>
-                            <tr><th>Kategorie</th><th>Beschreibung</th><th class="text-end">Kosten</th><th style="width:120px">Aktionen</th></tr>
-                        </thead>
-                        <tbody>
-                            {% for item in done_items %}
-                            <tr class="text-muted">
-                                <td>
-                                    {% if item.category == 'wache_buy' %}
-                                    <span class="badge bg-warning text-dark"><i class="bi bi-building"></i></span>
-                                    {% elif item.category == 'wache_upgrade' %}
-                                    <span class="badge bg-warning text-dark"><i class="bi bi-arrow-up-circle"></i></span>
-                                    {% elif item.category == 'wache_extension' %}
-                                    <span class="badge bg-info"><i class="bi bi-wrench"></i></span>
-                                    {% elif item.category == 'vehicle' %}
-                                    <span class="badge bg-primary"><i class="bi bi-truck"></i></span>
-                                    {% endif %}
-                                </td>
-                                <td>
-                                    {% if item.category == 'vehicle' and item.vehicle_nickname %}
-                                    <del><strong>{{ item.vehicle_nickname }}</strong></del>
-                                    <br><small class="text-muted">{{ item.vehicle_type.name if item.vehicle_type else '?' }}{% if item.vehicle_wache %} → {{ item.vehicle_wache.name }}{% endif %}</small>
-                                    {% else %}
-                                    <del>{{ item.description }}</del>
-                                    {% endif %}
-                                </td>
-                                <td class="text-end">{{ '{:,.0f}'.format(item.cost).replace(',', '.') }} €</td>
-                                <td>
-                                    <form method="post" action="/planner/{{ item.id }}/undone" class="d-inline" data-async="1">
-                                        <button class="btn btn-sm btn-outline-secondary" title="Zurück in Planung"><i class="bi bi-arrow-counterclockwise"></i></button>
-                                    </form>
-                                    <form method="post" action="/planner/{{ item.id }}/delete" class="d-inline" onsubmit="return confirm('Endgültig löschen?')" data-async="1">
-                                        <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
-                                    </form>
-                                </td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
+                <div class="accordion-body p-0" id="doneItemsContainer" data-loaded="0">
+                    <div class="px-3 py-3 text-muted small">Wird bei Bedarf geladen…</div>
                 </div>
             </div>
         </div>
@@ -623,31 +477,112 @@ function initPlannerPage() {
         }
     });
 
-    document.querySelectorAll('.section-items').forEach(function(planList) {
-        Sortable.create(planList, {
-            handle: '.drag-handle',
-            group: 'planner-items',
-            animation: 150,
-            onEnd: function() {
-                const order = [];
-                document.querySelectorAll('.planner-section').forEach(function(sectionEl) {
-                    const dividerId = sectionEl.dataset.dividerId;
-                    if (dividerId) {
-                        order.push(dividerId);
-                    }
-                    sectionEl.querySelectorAll('.section-items tr[data-id]').forEach(function(row) {
-                        order.push(row.dataset.id);
-                    });
-                });
-                fetch('/planner/reorder', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify(order)
-                }).then(function() {
-                    window.location.reload();
-                });
+    const doneSectionCollapse = document.getElementById('doneSectionCollapse');
+    const doneItemsContainer = document.getElementById('doneItemsContainer');
+    function loadDoneItemsIfNeeded() {
+        if (!doneItemsContainer || doneItemsContainer.dataset.loaded === '1' || doneItemsContainer.dataset.loading === '1') {
+            return;
+        }
+        doneItemsContainer.dataset.loading = '1';
+        fetch('/planner/done_items', {headers: {'X-Requested-With': 'XMLHttpRequest'}})
+            .then(function(response) { return response.text(); })
+            .then(function(html) {
+                doneItemsContainer.innerHTML = html;
+                doneItemsContainer.dataset.loaded = '1';
+                document.dispatchEvent(new CustomEvent('app:content-updated', {
+                    detail: { rootId: 'plannerPageRoot' }
+                }));
+            })
+            .catch(function() {
+                doneItemsContainer.innerHTML = '<div class="px-3 py-3 text-danger small">Vergangenheit konnte nicht geladen werden.</div>';
+            })
+            .finally(function() {
+                delete doneItemsContainer.dataset.loading;
+            });
+    }
+    if (doneSectionCollapse) {
+        doneSectionCollapse.addEventListener('show.bs.collapse', loadDoneItemsIfNeeded);
+        if (doneSectionCollapse.classList.contains('show')) {
+            loadDoneItemsIfNeeded();
+        }
+    }
+
+    function initSortableLists() {
+        document.querySelectorAll('.section-items').forEach(function(planList) {
+            if (planList.dataset.sortableBound === '1') {
+                return;
             }
+            planList.dataset.sortableBound = '1';
+            Sortable.create(planList, {
+                handle: '.drag-handle',
+                group: 'planner-items',
+                animation: 150,
+                onEnd: function() {
+                    const order = [];
+                    document.querySelectorAll('.planner-section').forEach(function(sectionEl) {
+                        const dividerId = sectionEl.dataset.dividerId;
+                        if (dividerId) {
+                            order.push(dividerId);
+                        }
+                        const loadedRows = sectionEl.querySelectorAll('.section-items tr[data-id]');
+                        if (loadedRows.length) {
+                            loadedRows.forEach(function(row) {
+                                order.push(row.dataset.id);
+                            });
+                            return;
+                        }
+                        const itemIds = (sectionEl.dataset.itemIds || '').split(',').filter(Boolean);
+                        itemIds.forEach(function(itemId) {
+                            order.push(itemId);
+                        });
+                    });
+                    fetch('/planner/reorder', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify(order)
+                    }).then(function() {
+                        window.location.reload();
+                    });
+                }
+            });
         });
+    }
+
+    function loadSectionIfNeeded(sectionContent) {
+        if (!sectionContent || sectionContent.dataset.loaded === '1' || sectionContent.dataset.loading === '1') {
+            return;
+        }
+        const sectionIndex = sectionContent.dataset.sectionIndex;
+        if (typeof sectionIndex === 'undefined') {
+            return;
+        }
+        sectionContent.dataset.loading = '1';
+        fetch('/planner/section/' + sectionIndex, {headers: {'X-Requested-With': 'XMLHttpRequest'}})
+            .then(function(response) { return response.text(); })
+            .then(function(html) {
+                sectionContent.innerHTML = html;
+                sectionContent.dataset.loaded = '1';
+                initSortableLists();
+            })
+            .catch(function() {
+                sectionContent.innerHTML = '<div class="px-3 py-3 text-danger small">Abschnitt konnte nicht geladen werden.</div>';
+            })
+            .finally(function() {
+                delete sectionContent.dataset.loading;
+            });
+    }
+
+    document.querySelectorAll('.planner-section .accordion-collapse').forEach(function(collapseEl) {
+        collapseEl.addEventListener('show.bs.collapse', function() {
+            loadSectionIfNeeded(collapseEl.querySelector('.planner-section-content'));
+        });
+    });
+
+    document.querySelectorAll('.planner-section-content').forEach(function(sectionContent) {
+        const collapseEl = sectionContent.closest('.accordion-collapse');
+        if (collapseEl && collapseEl.classList.contains('show')) {
+            loadSectionIfNeeded(sectionContent);
+        }
     });
 
     const wacheBuyType = document.getElementById('wacheBuyType');

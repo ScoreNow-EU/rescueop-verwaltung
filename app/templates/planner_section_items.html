@@ -1,0 +1,107 @@
+{% set section_items = items[sec.start:sec.end] %}
+{% set divider_item = section_items[0] if section_items and section_items[0].category == 'divider' else None %}
+{% set section_rows = section_items[1:] if divider_item else section_items %}
+{% set section_id = 'planner-section-' ~ (section_index + 1) %}
+{% set ns = namespace(row_num=sec.start + 1 - (1 if divider_item else 0)) %}
+{% if divider_item %}
+<div class="px-3 pt-3 d-flex gap-2 align-items-start flex-wrap">
+    <form method="post" action="/planner/{{ divider_item.id }}/rename_divider" class="d-flex gap-2 flex-grow-1" data-async="1" data-keep-open-id="{{ section_id }}-collapse">
+        <input type="text" name="divider_label" value="{{ divider_item.notes or '' }}" class="form-control form-control-sm fw-bold" style="max-width:320px">
+        <button class="btn btn-sm btn-outline-secondary" title="Umbenennen"><i class="bi bi-check-lg"></i></button>
+    </form>
+    <form method="post" action="/planner/{{ divider_item.id }}/delete" onsubmit="return confirm('Abschnitt-Trenner löschen?')" data-async="1" data-keep-open-id="{{ section_id }}-collapse">
+        <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+    </form>
+</div>
+{% endif %}
+<div class="table-responsive">
+    <table class="table table-hover mb-0">
+        <thead>
+            <tr>
+                <th style="width:40px"><i class="bi bi-grip-vertical"></i></th>
+                <th style="width:40px">#</th>
+                <th>Kategorie</th>
+                <th>Beschreibung</th>
+                <th class="text-center">Fahrzeuge</th>
+                <th class="text-end">Kosten</th>
+                <th class="text-end">Laufende Summe</th>
+                <th style="width:140px">Aktionen</th>
+            </tr>
+        </thead>
+        <tbody class="section-items">
+            {% for item in section_rows %}
+            {% set item_idx = sec.start + loop.index0 + (1 if divider_item else 0) %}
+            <tr data-id="{{ item.id }}">
+                <td class="drag-handle"><i class="bi bi-grip-vertical text-muted"></i></td>
+                <td>{{ ns.row_num + loop.index0 }}</td>
+                <td>
+                    {% if item.category == 'wache_buy' %}
+                    <span class="badge bg-warning text-dark"><i class="bi bi-building me-1"></i>Neue Wache</span>
+                    {% elif item.category == 'wache_upgrade' %}
+                    <span class="badge bg-warning text-dark"><i class="bi bi-arrow-up-circle me-1"></i>Ausbau</span>
+                    {% elif item.category == 'wache_extension' %}
+                    <span class="badge bg-info"><i class="bi bi-wrench me-1"></i>Erweiterung</span>
+                    {% elif item.category == 'vehicle' %}
+                    <span class="badge bg-primary"><i class="bi bi-truck me-1"></i>Fahrzeug</span>
+                    {% endif %}
+                </td>
+                <td>
+                    {% if item.category == 'vehicle' %}
+                        {% if item.vehicle_nickname %}
+                        <div class="d-flex align-items-center gap-2">
+                            <strong>{{ item.vehicle_nickname }}</strong>
+                            <button type="button" class="btn btn-link btn-sm p-0 text-muted" style="line-height:1" onclick="toggleNicknameEdit({{ item.id }})">
+                                <i class="bi bi-pencil-fill" style="font-size:.75rem"></i>
+                            </button>
+                        </div>
+                        <small class="text-muted">{{ item.vehicle_type.name if item.vehicle_type else '?' }}{% if item.vehicle_wache %} → {{ item.vehicle_wache.name }}{% endif %}{% if item.selected_modules %} · {{ item.selected_modules | map(attribute='name') | join(', ') }}{% endif %}</small>
+                        {% else %}
+                        <div class="d-flex align-items-center gap-2">
+                            <span class="text-muted fst-italic">kein Rufname</span>
+                            <button type="button" class="btn btn-link btn-sm p-0 text-primary" style="line-height:1" onclick="toggleNicknameEdit({{ item.id }})">
+                                <i class="bi bi-pencil-fill" style="font-size:.75rem"></i> setzen
+                            </button>
+                        </div>
+                        <small class="text-muted">{{ item.description }}</small>
+                        {% endif %}
+                        <form method="post" action="/planner/{{ item.id }}/set_nickname" id="nicknameForm{{ item.id }}" class="d-none mt-1" data-async="1" data-keep-open-id="{{ section_id }}-collapse">
+                            <div class="input-group input-group-sm">
+                                <input type="text" name="vehicle_nickname" class="form-control" value="{{ item.vehicle_nickname or '' }}" placeholder="Rufname">
+                                <button type="submit" class="btn btn-outline-primary"><i class="bi bi-check-lg"></i></button>
+                                <button type="button" class="btn btn-outline-secondary" onclick="toggleNicknameEdit({{ item.id }})"><i class="bi bi-x-lg"></i></button>
+                            </div>
+                        </form>
+                    {% else %}
+                    {{ item.description }}
+                    {% endif %}
+                    {% if item.notes %}<br><small class="text-muted">{{ item.notes }}</small>{% endif %}
+                </td>
+                <td class="text-center">
+                    {% set cap = capacity_info[item_idx] %}
+                    {% if cap %}
+                        {% if cap.max > 0 %}
+                        <span class="badge {% if cap.current > cap.max %}bg-danger{% elif cap.current == cap.max %}bg-warning text-dark{% else %}bg-success{% endif %}">
+                            {{ cap.current }}/{{ cap.max }}
+                        </span>
+                        {% else %}
+                        <span class="badge bg-secondary">{{ cap.current }}/?</span>
+                        {% endif %}
+                    {% endif %}
+                </td>
+                <td class="text-end">{{ '{:,.0f}'.format(item.cost).replace(',', '.') }} €</td>
+                <td class="text-end fw-bold">{{ '{:,.0f}'.format(running[item_idx]).replace(',', '.') }} €</td>
+                <td>
+                    <div class="d-flex gap-1">
+                        <form method="post" action="/planner/{{ item.id }}/done" data-async="1" data-keep-open-id="{{ section_id }}-collapse">
+                            <button class="btn btn-sm btn-outline-success" title="Erledigt &amp; übernehmen"><i class="bi bi-check-lg"></i></button>
+                        </form>
+                        <form method="post" action="/planner/{{ item.id }}/delete" onsubmit="return confirm('Eintrag löschen?')" data-async="1" data-keep-open-id="{{ section_id }}-collapse">
+                            <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+                        </form>
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>

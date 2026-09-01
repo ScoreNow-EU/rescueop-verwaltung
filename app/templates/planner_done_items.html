@@ -1,0 +1,48 @@
+{% if done_items %}
+{% if (done_items_total or 0) > (done_items|length) %}
+<div class="px-3 py-2 small text-muted border-bottom">
+    Aus Performance-Gründen werden hier die letzten {{ done_items|length }} erledigten Einträge angezeigt.
+</div>
+{% endif %}
+<table class="table table-sm mb-0">
+    <thead>
+        <tr><th>Kategorie</th><th>Beschreibung</th><th class="text-end">Kosten</th><th style="width:120px">Aktionen</th></tr>
+    </thead>
+    <tbody>
+        {% for item in done_items %}
+        <tr class="text-muted">
+            <td>
+                {% if item.category == 'wache_buy' %}
+                <span class="badge bg-warning text-dark"><i class="bi bi-building"></i></span>
+                {% elif item.category == 'wache_upgrade' %}
+                <span class="badge bg-warning text-dark"><i class="bi bi-arrow-up-circle"></i></span>
+                {% elif item.category == 'wache_extension' %}
+                <span class="badge bg-info"><i class="bi bi-wrench"></i></span>
+                {% elif item.category == 'vehicle' %}
+                <span class="badge bg-primary"><i class="bi bi-truck"></i></span>
+                {% endif %}
+            </td>
+            <td>
+                {% if item.category == 'vehicle' and item.vehicle_nickname %}
+                <del><strong>{{ item.vehicle_nickname }}</strong></del>
+                <br><small class="text-muted">{{ item.vehicle_type.name if item.vehicle_type else '?' }}{% if item.vehicle_wache %} → {{ item.vehicle_wache.name }}{% endif %}</small>
+                {% else %}
+                <del>{{ item.description }}</del>
+                {% endif %}
+            </td>
+            <td class="text-end">{{ '{:,.0f}'.format(item.cost).replace(',', '.') }} €</td>
+            <td>
+                <form method="post" action="/planner/{{ item.id }}/undone" class="d-inline" data-async="1">
+                    <button class="btn btn-sm btn-outline-secondary" title="Zurück in Planung"><i class="bi bi-arrow-counterclockwise"></i></button>
+                </form>
+                <form method="post" action="/planner/{{ item.id }}/delete" class="d-inline" onsubmit="return confirm('Endgültig löschen?')" data-async="1">
+                    <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+                </form>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<div class="px-3 py-2 text-muted small">Noch keine erledigten Einträge.</div>
+{% endif %}
