@@ -5,7 +5,8 @@ from app import db
 from app.access import assign_active_savegame, scoped, scoped_get_or_404
 from app.models import (VehicleType, VehicleModule, WacheType, WacheLevel,
                         MyWache, MyVehicle, PlanItem, WacheUpgrade,
-                        NamingOrgType, NamingLocation, NamingPreset)
+                        NamingOrgType, NamingLocation, NamingPreset,
+                        WacheStandardVehicle, WacheStandardVehicleItem)
 import re
 
 planner_bp = Blueprint('planner', __name__)
@@ -99,35 +100,6 @@ def _planned_wache_ref_from_item(item):
     return None
 
 
-def _next_org_wache_number(org_abbr):
-    if not org_abbr:
-        return 1
-    max_num = 0
-    pattern = re.compile(rf'^{re.escape(org_abbr)}(\d+)$')
-    for w in scoped(MyWache).all():
-        match = pattern.match((w.name or '').strip())
-        if not match:
-            continue
-        max_num = max(max_num, int(match.group(1)))
-    for item in scoped(PlanItem).filter_by(done=False, category='wache_buy').all():
-        match = pattern.match((item.wache_name or '').strip())
-        if not match:
-            continue
-        max_num = max(max_num, int(match.group(1)))
-    return max_num + 1
-
-
-def _build_wache_name_from_meta(org_type, location, explicit_number=None):
-    if not org_type:
-        return ''
-    if org_type.no_location:
-        number = explicit_number if explicit_number and explicit_number > 0 else _next_org_wache_number(org_type.abbreviation)
-        return f'{org_type.abbreviation}{number}'
-    if location:
-        return f'{org_type.abbreviation}-{location.abbreviation}'
-    return org_type.abbreviation
-
-
 @planner_bp.route('/planner')
 def index():
     items = scoped(PlanItem).filter_by(done=False).order_by(PlanItem.priority).all()
@@ -146,6 +118,15 @@ def index():
     org_types = scoped(NamingOrgType).order_by(NamingOrgType.abbreviation).all()
     locations = scoped(NamingLocation).order_by(NamingLocation.abbreviation).all()
     naming_presets = scoped(NamingPreset).order_by(NamingPreset.is_default.desc(), NamingPreset.name).all()
+
+    std_vehicle_counts = {wt.id: 0 for wt in wache_types}
+    detailed_items = scoped(WacheStandardVehicleItem).all()
+    if detailed_items:
+        for cfg in detailed_items:
+            std_vehicle_counts[cfg.wache_type_id] = std_vehicle_counts.get(cfg.wache_type_id, 0) + max(1, cfg.quantity or 1)
+    else:
+        for cfg in scoped(WacheStandardVehicle).all():
+            std_vehicle_counts[cfg.wache_type_id] = std_vehicle_counts.get(cfg.wache_type_id, 0) + max(0, cfg.quantity or 0)
 
     # Used by planner naming helpers in the template script.
     wache_veh_counts = {}
@@ -340,7 +321,8 @@ def index():
                            org_types=org_types, locations=locations,
                            naming_presets=naming_presets,
                            wache_veh_counts_json=wache_veh_counts,
-                           org_wache_next_json=org_wache_next)
+                           org_wache_next_json=org_wache_next,
+                           std_vehicle_counts_json=std_vehicle_counts)
 
 
 # ---------- Add: Wache kaufen ---------------------------------------------
@@ -353,11 +335,11 @@ def add_wache_buy():
     wache_location_id = request.form.get('naming_location_id', type=int) or None
     include_all_upgrades = request.form.get('include_all_upgrades') == '1'
     include_all_extensions = request.form.get('include_all_extensions') == '1'
-    wache_number = request.form.get('wache_number', type=int)
+    include_standard_vehicles = request.form.get('include_standard_vehicles') == '1'
     notes = request.form.get('notes', '').strip() or None
 
-    if not wache_type_id:
-        flash('Wachen-Typ ist erforderlich.', 'danger')
+    if not wache_type_id or not wache_name:
+        flash('Name und Wachen-Typ sind erforderlich.', 'danger')
         return redirect(url_for('planner.index'))
 
     wache_type = scoped(WacheType).filter_by(id=wache_type_id).first()
@@ -375,13 +357,6 @@ def add_wache_buy():
         return redirect(url_for('planner.index'))
     if org_type and org_type.no_location:
         wache_location_id = None
-
-    if not wache_name:
-        wache_name = _build_wache_name_from_meta(org_type, location, explicit_number=wache_number)
-
-    if not wache_name:
-        flash('Bitte Name eingeben oder oben Org-Typ auswaehlen.', 'danger')
-        return redirect(url_for('planner.index'))
 
 
     max_prio = _next_priority()
@@ -432,6 +407,44 @@ def add_wache_buy():
             assign_active_savegame(ext_item)
             db.session.add(ext_item)
             extras_added += 1
+
+    if include_standard_vehicles:
+        standard_items = scoped(WacheStandardVehicleItem).filter_by(wache_type_id=wache_type.id).all()
+        if standard_items:
+            for cfg in standard_items:
+                if not cfg.vehicle_type_id:
+                    continue
+                quantity = max(1, min(cfg.quantity or 1, 100))
+                for _ in range(quantity):
+                    next_priority += 1
+                    veh_item = PlanItem(
+                        category='vehicle',
+                        vehicle_type_id=cfg.vehicle_type_id,
+                        vehicle_wache_plan_item_id=item.id,
+                        priority=next_priority,
+                    )
+                    assign_active_savegame(veh_item)
+                    if cfg.selected_modules:
+                        veh_item.selected_modules = list(cfg.selected_modules)
+                    db.session.add(veh_item)
+                    extras_added += 1
+        else:
+            # Legacy fallback for quantity-only standards.
+            for cfg in scoped(WacheStandardVehicle).filter_by(wache_type_id=wache_type.id).all():
+                if not cfg.vehicle_type_id:
+                    continue
+                quantity = max(0, min(cfg.quantity or 0, 100))
+                for _ in range(quantity):
+                    next_priority += 1
+                    veh_item = PlanItem(
+                        category='vehicle',
+                        vehicle_type_id=cfg.vehicle_type_id,
+                        vehicle_wache_plan_item_id=item.id,
+                        priority=next_priority,
+                    )
+                    assign_active_savegame(veh_item)
+                    db.session.add(veh_item)
+                    extras_added += 1
 
     db.session.commit()
     if extras_added:

@@ -267,7 +267,7 @@
                                 </div>
                                 <div class="col-3" id="wacheBuyNrDiv" style="display:none">
                                     <label class="form-label">Nr.</label>
-                                    <input type="number" class="form-control form-control-sm" id="wacheBuyNr" name="wache_number" min="1" placeholder="1">
+                                    <input type="number" class="form-control form-control-sm" id="wacheBuyNr" min="1" placeholder="1">
                                 </div>
                                 <div class="col-auto">
                                     <button type="button" class="btn btn-sm btn-outline-secondary" id="wacheBuyGenBtn" title="Namen generieren">
@@ -277,9 +277,8 @@
                             </div>
                             {% endif %}
                             <div class="mb-3">
-                                <label class="form-label">Name der Wache (optional)</label>
-                                <input type="text" name="wache_name" class="form-control" id="wacheBuyName" placeholder="Wird aus Org/Standort erzeugt, falls leer">
-                                <small class="text-muted">Wenn oben Org-Typ (und optional Standort/Nr.) gesetzt ist, wird der Name automatisch gefuellt.</small>
+                                <label class="form-label">Name der Wache</label>
+                                <input type="text" name="wache_name" class="form-control" id="wacheBuyName" required placeholder="z.B. FF-LIN">
                             </div>
                             <div class="mb-3">
                                 <label class="form-label">Wachen-Typ</label>
@@ -290,7 +289,8 @@
                                             data-cost="{{ wt.levels[0].cost if wt.levels else 0 }}"
                                             data-max-vehicles="{{ wt.levels[0].max_vehicles if wt.levels else 0 }}"
                                             data-level-count="{{ wt.levels|length }}"
-                                            data-upgrade-count="{{ wt.upgrades|length }}">{{ wt.name }}</option>
+                                            data-upgrade-count="{{ wt.upgrades|length }}"
+                                            data-std-vehicle-count="{{ std_vehicle_counts_json.get(wt.id, 0) }}">{{ wt.name }}</option>
                                     {% endfor %}
                                 </select>
                             </div>
@@ -305,6 +305,12 @@
                                     <input class="form-check-input" type="checkbox" id="wacheBuyAllExtensions" name="include_all_extensions" value="1">
                                     <label class="form-check-label" for="wacheBuyAllExtensions">
                                         Alle Erweiterungen direkt als Folgeeinträge hinzufügen
+                                    </label>
+                                </div>
+                                <div class="form-check mt-1">
+                                    <input class="form-check-input" type="checkbox" id="wacheBuyStdVehicles" name="include_standard_vehicles" value="1">
+                                    <label class="form-check-label" for="wacheBuyStdVehicles">
+                                        Standard-Fahrzeuge direkt als Folgeeinträge hinzufügen
                                     </label>
                                 </div>
                                 <small class="text-muted d-block mt-1" id="wacheBuyBulkHint"></small>
@@ -1053,7 +1059,68 @@ function initPlannerPage() {
     const wacheBuyName = document.getElementById('wacheBuyName');
     const wacheBuyGenBtn = document.getElementById('wacheBuyGenBtn');
     const wacheBuyBulkHint = document.getElementById('wacheBuyBulkHint');
-    const formWacheBuy = document.getElementById('formWacheBuy');
+    const wacheBuyStdVehicles = document.getElementById('wacheBuyStdVehicles');
+    let wacheBuyTypeUserChanged = false;
+    let suppressWacheTypeUserChange = false;
+
+    function suggestWacheTypeValueFromOrg() {
+        if (!wacheBuyOrg || !wacheBuyType) {
+            return '';
+        }
+        const orgOpt = wacheBuyOrg.options[wacheBuyOrg.selectedIndex];
+        const orgText = ((orgOpt ? orgOpt.dataset.abbr : '') + ' ' + (orgOpt ? orgOpt.textContent : '')).toLowerCase();
+
+        const rules = [
+            {org: ['feuerwehr', 'bf', 'ff', 'florian'], station: ['feuer']},
+            {org: ['rettung', 'drk', 'asb', 'joh', 'mhd', 'brk', 'rk'], station: ['rett', 'rd']},
+            {org: ['thw'], station: ['thw']},
+            {org: ['polizei'], station: ['polizei']},
+        ];
+
+        let stationNeedles = [];
+        for (const rule of rules) {
+            if (rule.org.some(function(token) { return orgText.includes(token); })) {
+                stationNeedles = rule.station;
+                break;
+            }
+        }
+
+        if (!stationNeedles.length) {
+            return '';
+        }
+
+        for (const opt of wacheBuyType.options) {
+            if (!opt.value) {
+                continue;
+            }
+            const typeText = (opt.textContent || '').toLowerCase();
+            if (stationNeedles.some(function(needle) { return typeText.includes(needle); })) {
+                return opt.value;
+            }
+        }
+        const realOptions = Array.from(wacheBuyType.options).filter(function(opt) { return !!opt.value; });
+        if (realOptions.length === 1) {
+            return realOptions[0].value;
+        }
+        return '';
+    }
+
+    function applySuggestedWacheType(force) {
+        if (!wacheBuyType) {
+            return;
+        }
+        if (!force && wacheBuyTypeUserChanged) {
+            return;
+        }
+        const suggested = suggestWacheTypeValueFromOrg();
+        if (!suggested) {
+            return;
+        }
+        suppressWacheTypeUserChange = true;
+        wacheBuyType.value = suggested;
+        wacheBuyType.dispatchEvent(new Event('change'));
+        suppressWacheTypeUserChange = false;
+    }
 
     function applyNoLocWache() {
         if (!wacheBuyOrg) return;
@@ -1096,64 +1163,41 @@ function initPlannerPage() {
         }
         const levelCount = parseInt(opt.dataset.levelCount || '0', 10) || 0;
         const upgradeCount = parseInt(opt.dataset.upgradeCount || '0', 10) || 0;
+        const stdVehicleCount = parseInt(opt.dataset.stdVehicleCount || '0', 10) || 0;
         const extraLevels = Math.max(0, levelCount - 1);
-        wacheBuyBulkHint.textContent = 'Dieser Typ hat ' + extraLevels + ' zusätzliche Ausbaustufe(n) und ' + upgradeCount + ' Erweiterung(en).';
-    }
-
-    function maybeAutofillWacheName() {
-        if (!wacheBuyName) {
-            return;
-        }
-        if (wacheBuyName.dataset.manualEdit === '1') {
-            return;
-        }
-        const name = generateWacheName();
-        wacheBuyName.value = name || '';
+        const stdText = wacheBuyStdVehicles && wacheBuyStdVehicles.checked
+            ? ', plus ' + stdVehicleCount + ' Standard-Fahrzeug(e)'
+            : '';
+        wacheBuyBulkHint.textContent = 'Dieser Typ hat ' + extraLevels + ' zusätzliche Ausbaustufe(n) und ' + upgradeCount + ' Erweiterung(en)' + stdText + '.';
     }
 
     if (wacheBuyOrg) {
         wacheBuyOrg.addEventListener('change', function() {
             applyNoLocWache();
-            maybeAutofillWacheName();
+            applySuggestedWacheType(false);
         });
         applyNoLocWache();
-        maybeAutofillWacheName();
-    }
-
-    if (wacheBuyLoc) {
-        wacheBuyLoc.addEventListener('change', maybeAutofillWacheName);
-    }
-
-    if (wacheBuyNr) {
-        wacheBuyNr.addEventListener('input', maybeAutofillWacheName);
-    }
-
-    if (wacheBuyName) {
-        wacheBuyName.addEventListener('input', function() {
-            wacheBuyName.dataset.manualEdit = wacheBuyName.value.trim() ? '1' : '0';
-        });
+        applySuggestedWacheType(false);
     }
 
     if (wacheBuyType) {
+        wacheBuyType.addEventListener('change', function() {
+            if (!suppressWacheTypeUserChange) {
+                wacheBuyTypeUserChanged = true;
+            }
+        });
         wacheBuyType.addEventListener('change', updateWacheBuyBulkHint);
         updateWacheBuyBulkHint();
+    }
+
+    if (wacheBuyStdVehicles) {
+        wacheBuyStdVehicles.addEventListener('change', updateWacheBuyBulkHint);
     }
 
     if (wacheBuyGenBtn) {
         wacheBuyGenBtn.addEventListener('click', function() {
             const name = generateWacheName();
-            if (name && wacheBuyName) {
-                wacheBuyName.value = name;
-                wacheBuyName.dataset.manualEdit = '0';
-            }
-        });
-    }
-
-    if (formWacheBuy) {
-        formWacheBuy.addEventListener('submit', function() {
-            if (wacheBuyName && !wacheBuyName.value.trim()) {
-                wacheBuyName.value = generateWacheName();
-            }
+            if (name && wacheBuyName) wacheBuyName.value = name;
         });
     }
 }
