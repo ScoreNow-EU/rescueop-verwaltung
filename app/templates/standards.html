@@ -284,6 +284,7 @@
                                 <tr>
                                     <th>Kürzel</th>
                                     <th>Voller Name</th>
+                                    <th>Standard-Wachen-Typ</th>
                                     <th>Kein Standort</th>
                                     <th></th>
                                 </tr>
@@ -293,6 +294,13 @@
                                 <tr>
                                     <td><span class="badge bg-secondary fs-6">{{ o.abbreviation }}</span></td>
                                     <td>{{ o.full_name }}</td>
+                                    <td>
+                                        {% if o.default_wache_type %}
+                                        <span class="badge bg-primary">{{ o.default_wache_type.name }}</span>
+                                        {% else %}
+                                        <span class="text-muted">—</span>
+                                        {% endif %}
+                                    </td>
                                     <td>
                                         {% if o.no_location %}
                                         <span class="badge bg-warning text-dark"><i class="bi bi-geo-alt-slash me-1"></i>Ja</span>
@@ -333,6 +341,15 @@
                                                         <label class="form-label">Voller Name</label>
                                                         <input type="text" name="full_name" class="form-control"
                                                                value="{{ o.full_name }}" required maxlength="120">
+                                                    </div>
+                                                    <div class="col-12">
+                                                        <label class="form-label">Standard-Wachen-Typ</label>
+                                                        <select name="default_wache_type_id" class="form-select">
+                                                            <option value="">— keiner —</option>
+                                                            {% for wt in wache_types %}
+                                                            <option value="{{ wt.id }}" {% if o.default_wache_type_id == wt.id %}selected{% endif %}>{{ wt.name }}</option>
+                                                            {% endfor %}
+                                                        </select>
                                                     </div>
                                                     <div class="col-12">
                                                         <div class="form-check">
@@ -648,6 +665,15 @@
                         <label class="form-label">Voller Name *</label>
                         <input type="text" name="full_name" class="form-control"
                                placeholder="Freiwillige Feuerwehr" required maxlength="120">
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label">Standard-Wachen-Typ</label>
+                        <select name="default_wache_type_id" class="form-select">
+                            <option value="">— keiner —</option>
+                            {% for wt in wache_types %}
+                            <option value="{{ wt.id }}">{{ wt.name }}</option>
+                            {% endfor %}
+                        </select>
                     </div>
                     <div class="col-12">
                         <div class="form-check">

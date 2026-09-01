@@ -250,7 +250,7 @@
                                     <select class="form-select form-select-sm" id="wacheBuyOrg" name="naming_org_type_id">
                                         <option value="" data-no-location="0" data-abbr="">— keiner —</option>
                                         {% for o in org_types %}
-                                        <option value="{{ o.id }}" data-no-location="{{ '1' if o.no_location else '0' }}" data-abbr="{{ o.abbreviation }}">
+                                        <option value="{{ o.id }}" data-no-location="{{ '1' if o.no_location else '0' }}" data-abbr="{{ o.abbreviation }}" data-wache-type-id="{{ org_to_wache_type_json.get(o.id, '') }}">
                                             {{ o.abbreviation }} – {{ o.full_name }}
                                         </option>
                                         {% endfor %}
@@ -281,8 +281,8 @@
                                 <input type="text" name="wache_name" class="form-control" id="wacheBuyName" required placeholder="z.B. FF-LIN">
                             </div>
                             <div class="mb-3">
-                                <label class="form-label">Wachen-Typ</label>
-                                <select name="wache_type_id" class="form-select" required id="wacheBuyType">
+                                <label class="form-label">Wachen-Typ (aus Org-Typ)</label>
+                                <select name="wache_type_id" class="form-select d-none" id="wacheBuyType">
                                     <option value="">— wählen —</option>
                                     {% for wt in wache_types %}
                                     <option value="{{ wt.id }}"
@@ -293,6 +293,8 @@
                                             data-std-vehicle-count="{{ std_vehicle_counts_json.get(wt.id, 0) }}">{{ wt.name }}</option>
                                     {% endfor %}
                                 </select>
+                                <div class="form-control bg-light" id="wacheBuyTypeInfo">— bitte Org-Typ wählen —</div>
+                                <small class="text-muted">Der Wachen-Typ wird automatisch gesetzt.</small>
                             </div>
                             <div class="mb-3">
                                 <div class="form-check">
@@ -1060,43 +1062,16 @@ function initPlannerPage() {
     const wacheBuyGenBtn = document.getElementById('wacheBuyGenBtn');
     const wacheBuyBulkHint = document.getElementById('wacheBuyBulkHint');
     const wacheBuyStdVehicles = document.getElementById('wacheBuyStdVehicles');
-    let wacheBuyTypeUserChanged = false;
-    let suppressWacheTypeUserChange = false;
+    const wacheBuyTypeInfo = document.getElementById('wacheBuyTypeInfo');
 
     function suggestWacheTypeValueFromOrg() {
         if (!wacheBuyOrg || !wacheBuyType) {
             return '';
         }
         const orgOpt = wacheBuyOrg.options[wacheBuyOrg.selectedIndex];
-        const orgText = ((orgOpt ? orgOpt.dataset.abbr : '') + ' ' + (orgOpt ? orgOpt.textContent : '')).toLowerCase();
-
-        const rules = [
-            {org: ['feuerwehr', 'bf', 'ff', 'florian'], station: ['feuer']},
-            {org: ['rettung', 'drk', 'asb', 'joh', 'mhd', 'brk', 'rk'], station: ['rett', 'rd']},
-            {org: ['thw'], station: ['thw']},
-            {org: ['polizei'], station: ['polizei']},
-        ];
-
-        let stationNeedles = [];
-        for (const rule of rules) {
-            if (rule.org.some(function(token) { return orgText.includes(token); })) {
-                stationNeedles = rule.station;
-                break;
-            }
-        }
-
-        if (!stationNeedles.length) {
-            return '';
-        }
-
-        for (const opt of wacheBuyType.options) {
-            if (!opt.value) {
-                continue;
-            }
-            const typeText = (opt.textContent || '').toLowerCase();
-            if (stationNeedles.some(function(needle) { return typeText.includes(needle); })) {
-                return opt.value;
-            }
+        const mapped = orgOpt ? (orgOpt.dataset.wacheTypeId || '') : '';
+        if (mapped) {
+            return mapped;
         }
         const realOptions = Array.from(wacheBuyType.options).filter(function(opt) { return !!opt.value; });
         if (realOptions.length === 1) {
@@ -1109,17 +1084,21 @@ function initPlannerPage() {
         if (!wacheBuyType) {
             return;
         }
-        if (!force && wacheBuyTypeUserChanged) {
-            return;
-        }
         const suggested = suggestWacheTypeValueFromOrg();
-        if (!suggested) {
+        wacheBuyType.value = suggested || '';
+        wacheBuyType.dispatchEvent(new Event('change'));
+
+        if (!wacheBuyTypeInfo) {
             return;
         }
-        suppressWacheTypeUserChange = true;
-        wacheBuyType.value = suggested;
-        wacheBuyType.dispatchEvent(new Event('change'));
-        suppressWacheTypeUserChange = false;
+        const selected = wacheBuyType.options[wacheBuyType.selectedIndex];
+        if (selected && selected.value) {
+            wacheBuyTypeInfo.textContent = selected.textContent || '—';
+            wacheBuyTypeInfo.classList.remove('is-invalid');
+        } else {
+            wacheBuyTypeInfo.textContent = '— kein passender Wachen-Typ gefunden —';
+            wacheBuyTypeInfo.classList.add('is-invalid');
+        }
     }
 
     function applyNoLocWache() {
@@ -1174,18 +1153,13 @@ function initPlannerPage() {
     if (wacheBuyOrg) {
         wacheBuyOrg.addEventListener('change', function() {
             applyNoLocWache();
-            applySuggestedWacheType(false);
+            applySuggestedWacheType(true);
         });
         applyNoLocWache();
-        applySuggestedWacheType(false);
+        applySuggestedWacheType(true);
     }
 
     if (wacheBuyType) {
-        wacheBuyType.addEventListener('change', function() {
-            if (!suppressWacheTypeUserChange) {
-                wacheBuyTypeUserChanged = true;
-            }
-        });
         wacheBuyType.addEventListener('change', updateWacheBuyBulkHint);
         updateWacheBuyBulkHint();
     }
@@ -1198,6 +1172,19 @@ function initPlannerPage() {
         wacheBuyGenBtn.addEventListener('click', function() {
             const name = generateWacheName();
             if (name && wacheBuyName) wacheBuyName.value = name;
+        });
+    }
+
+    const formWacheBuy = document.getElementById('formWacheBuy');
+    if (formWacheBuy) {
+        formWacheBuy.addEventListener('submit', function(event) {
+            if (!wacheBuyType || !wacheBuyType.value) {
+                event.preventDefault();
+                if (wacheBuyTypeInfo) {
+                    wacheBuyTypeInfo.classList.add('is-invalid');
+                }
+                alert('Bitte zuerst einen Org-Typ mit passendem Wachen-Typ auswählen.');
+            }
         });
     }
 }

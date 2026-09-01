@@ -202,6 +202,9 @@ class NamingOrgType(db.Model):
     abbreviation = db.Column(db.String(20), nullable=False)
     full_name = db.Column(db.String(120), nullable=False)
     no_location = db.Column(db.Boolean, nullable=False, default=False)
+    default_wache_type_id = db.Column(db.Integer, db.ForeignKey('wache_type.id'), nullable=True)
+
+    default_wache_type = db.relationship('WacheType', foreign_keys=[default_wache_type_id])
 
     __table_args__ = (
         db.UniqueConstraint('savegame_id', 'abbreviation', name='uq_org_abbr_per_savegame'),

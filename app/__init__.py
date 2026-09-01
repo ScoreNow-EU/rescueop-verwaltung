@@ -464,6 +464,10 @@ def _migrate_standards_if_needed(database):
                 conn.execute(sqlalchemy.text(
                     'ALTER TABLE naming_org_type ADD COLUMN no_location BOOLEAN NOT NULL DEFAULT FALSE'
                 ))
+            if 'default_wache_type_id' not in cols:
+                conn.execute(sqlalchemy.text(
+                    'ALTER TABLE naming_org_type ADD COLUMN default_wache_type_id INTEGER REFERENCES wache_type(id)'
+                ))
 
         if 'my_wache' in inspector.get_table_names():
             cols = [c['name'] for c in inspector.get_columns('my_wache')]

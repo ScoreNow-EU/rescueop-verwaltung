@@ -381,11 +381,13 @@ def _import_backup_into_active_savegame(sqlite_path, include_global):
     plan_item_pending_refs = {}
 
     for row in source['naming_org_type']:
+        mapped_default_wache_type_id = wache_type_id_map.get(row.get('default_wache_type_id'))
         org = NamingOrgType(
             savegame_id=active_savegame_id,
             abbreviation=row.get('abbreviation') or '',
             full_name=row.get('full_name') or '',
             no_location=bool(row.get('no_location')),
+            default_wache_type_id=mapped_default_wache_type_id,
         )
         db.session.add(org)
         db.session.flush()
@@ -640,14 +642,23 @@ def delete_preset(pid):
 def add_org():
     abbr = request.form.get('abbreviation', '').strip().upper()
     full = request.form.get('full_name', '').strip()
+    default_wache_type_id = request.form.get('default_wache_type_id', type=int) or None
     if not abbr or not full:
         flash('Kürzel und Name sind erforderlich.', 'danger')
         return redirect(url_for('standards.index'))
     if scoped(NamingOrgType).filter_by(abbreviation=abbr).first():
         flash(f'Kürzel „{abbr}" ist bereits vorhanden.', 'danger')
         return redirect(url_for('standards.index'))
+    if default_wache_type_id and not scoped(WacheType).filter_by(id=default_wache_type_id).first():
+        flash('Wachen-Typ konnte nicht gefunden werden.', 'danger')
+        return redirect(url_for('standards.index'))
     no_loc = 'no_location' in request.form
-    org = NamingOrgType(abbreviation=abbr, full_name=full, no_location=no_loc)
+    org = NamingOrgType(
+        abbreviation=abbr,
+        full_name=full,
+        no_location=no_loc,
+        default_wache_type_id=default_wache_type_id,
+    )
     assign_active_savegame(org)
     db.session.add(org)
     db.session.commit()
@@ -660,6 +671,7 @@ def edit_org(oid):
     org = scoped_get_or_404(NamingOrgType, oid)
     abbr = request.form.get('abbreviation', '').strip().upper()
     full = request.form.get('full_name', '').strip()
+    default_wache_type_id = request.form.get('default_wache_type_id', type=int) or None
     if not abbr or not full:
         flash('Kürzel und Name sind erforderlich.', 'danger')
         return redirect(url_for('standards.index'))
@@ -667,9 +679,13 @@ def edit_org(oid):
     if existing and existing.id != oid:
         flash(f'Kürzel „{abbr}" ist bereits vorhanden.', 'danger')
         return redirect(url_for('standards.index'))
+    if default_wache_type_id and not scoped(WacheType).filter_by(id=default_wache_type_id).first():
+        flash('Wachen-Typ konnte nicht gefunden werden.', 'danger')
+        return redirect(url_for('standards.index'))
     org.abbreviation = abbr
     org.full_name = full
     org.no_location = 'no_location' in request.form
+    org.default_wache_type_id = default_wache_type_id
     db.session.commit()
     flash(f'Organisations-Typ „{abbr}" aktualisiert.', 'success')
     return redirect(url_for('standards.index'))

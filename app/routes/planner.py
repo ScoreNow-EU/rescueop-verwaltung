@@ -100,6 +100,18 @@ def _planned_wache_ref_from_item(item):
     return None
 
 
+def _match_wache_type_for_org(org_type, wache_types):
+    if not org_type:
+        return None
+    if org_type.default_wache_type_id:
+        for wt in wache_types:
+            if wt.id == org_type.default_wache_type_id:
+                return wt
+    if len(wache_types) == 1:
+        return wache_types[0]
+    return None
+
+
 @planner_bp.route('/planner')
 def index():
     items = scoped(PlanItem).filter_by(done=False).order_by(PlanItem.priority).all()
@@ -118,6 +130,15 @@ def index():
     org_types = scoped(NamingOrgType).order_by(NamingOrgType.abbreviation).all()
     locations = scoped(NamingLocation).order_by(NamingLocation.abbreviation).all()
     naming_presets = scoped(NamingPreset).order_by(NamingPreset.is_default.desc(), NamingPreset.name).all()
+    org_to_wache_type = {}
+    for org in org_types:
+        matched = None
+        if org.default_wache_type_id:
+            matched = next((wt for wt in wache_types if wt.id == org.default_wache_type_id), None)
+        if not matched:
+            matched = _match_wache_type_for_org(org, wache_types)
+        if matched:
+            org_to_wache_type[org.id] = matched.id
 
     std_vehicle_counts = {wt.id: 0 for wt in wache_types}
     detailed_items = scoped(WacheStandardVehicleItem).all()
@@ -320,6 +341,7 @@ def index():
                            capacity_info=capacity_info,
                            org_types=org_types, locations=locations,
                            naming_presets=naming_presets,
+                           org_to_wache_type_json=org_to_wache_type,
                            wache_veh_counts_json=wache_veh_counts,
                            org_wache_next_json=org_wache_next,
                            std_vehicle_counts_json=std_vehicle_counts)
@@ -338,15 +360,6 @@ def add_wache_buy():
     include_standard_vehicles = request.form.get('include_standard_vehicles') == '1'
     notes = request.form.get('notes', '').strip() or None
 
-    if not wache_type_id or not wache_name:
-        flash('Name und Wachen-Typ sind erforderlich.', 'danger')
-        return redirect(url_for('planner.index'))
-
-    wache_type = scoped(WacheType).filter_by(id=wache_type_id).first()
-    if not wache_type:
-        flash('Wachen-Typ konnte nicht gefunden werden.', 'danger')
-        return redirect(url_for('planner.index'))
-
     org_type = scoped(NamingOrgType).filter_by(id=wache_org_type_id).first() if wache_org_type_id else None
     location = scoped(NamingLocation).filter_by(id=wache_location_id).first() if wache_location_id else None
     if wache_org_type_id and not org_type:
@@ -357,6 +370,20 @@ def add_wache_buy():
         return redirect(url_for('planner.index'))
     if org_type and org_type.no_location:
         wache_location_id = None
+
+    if not wache_type_id and org_type:
+        matched_wache_type = _match_wache_type_for_org(org_type, scoped(WacheType).order_by(WacheType.name).all())
+        if matched_wache_type:
+            wache_type_id = matched_wache_type.id
+
+    if not wache_type_id or not wache_name:
+        flash('Name und Wachen-Typ sind erforderlich (Wachen-Typ wird aus Org-Typ ermittelt).', 'danger')
+        return redirect(url_for('planner.index'))
+
+    wache_type = scoped(WacheType).filter_by(id=wache_type_id).first()
+    if not wache_type:
+        flash('Wachen-Typ konnte nicht gefunden werden.', 'danger')
+        return redirect(url_for('planner.index'))
 
 
     max_prio = _next_priority()
