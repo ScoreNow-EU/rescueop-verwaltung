@@ -99,6 +99,35 @@ def _planned_wache_ref_from_item(item):
     return None
 
 
+def _next_org_wache_number(org_abbr):
+    if not org_abbr:
+        return 1
+    max_num = 0
+    pattern = re.compile(rf'^{re.escape(org_abbr)}(\d+)$')
+    for w in scoped(MyWache).all():
+        match = pattern.match((w.name or '').strip())
+        if not match:
+            continue
+        max_num = max(max_num, int(match.group(1)))
+    for item in scoped(PlanItem).filter_by(done=False, category='wache_buy').all():
+        match = pattern.match((item.wache_name or '').strip())
+        if not match:
+            continue
+        max_num = max(max_num, int(match.group(1)))
+    return max_num + 1
+
+
+def _build_wache_name_from_meta(org_type, location, explicit_number=None):
+    if not org_type:
+        return ''
+    if org_type.no_location:
+        number = explicit_number if explicit_number and explicit_number > 0 else _next_org_wache_number(org_type.abbreviation)
+        return f'{org_type.abbreviation}{number}'
+    if location:
+        return f'{org_type.abbreviation}-{location.abbreviation}'
+    return org_type.abbreviation
+
+
 @planner_bp.route('/planner')
 def index():
     items = scoped(PlanItem).filter_by(done=False).order_by(PlanItem.priority).all()
@@ -324,10 +353,11 @@ def add_wache_buy():
     wache_location_id = request.form.get('naming_location_id', type=int) or None
     include_all_upgrades = request.form.get('include_all_upgrades') == '1'
     include_all_extensions = request.form.get('include_all_extensions') == '1'
+    wache_number = request.form.get('wache_number', type=int)
     notes = request.form.get('notes', '').strip() or None
 
-    if not wache_type_id or not wache_name:
-        flash('Name und Wachen-Typ sind erforderlich.', 'danger')
+    if not wache_type_id:
+        flash('Wachen-Typ ist erforderlich.', 'danger')
         return redirect(url_for('planner.index'))
 
     wache_type = scoped(WacheType).filter_by(id=wache_type_id).first()
@@ -345,6 +375,13 @@ def add_wache_buy():
         return redirect(url_for('planner.index'))
     if org_type and org_type.no_location:
         wache_location_id = None
+
+    if not wache_name:
+        wache_name = _build_wache_name_from_meta(org_type, location, explicit_number=wache_number)
+
+    if not wache_name:
+        flash('Bitte Name eingeben oder oben Org-Typ auswaehlen.', 'danger')
+        return redirect(url_for('planner.index'))
 
 
     max_prio = _next_priority()

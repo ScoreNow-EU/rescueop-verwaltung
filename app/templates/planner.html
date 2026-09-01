@@ -267,7 +267,7 @@
                                 </div>
                                 <div class="col-3" id="wacheBuyNrDiv" style="display:none">
                                     <label class="form-label">Nr.</label>
-                                    <input type="number" class="form-control form-control-sm" id="wacheBuyNr" min="1" placeholder="1">
+                                    <input type="number" class="form-control form-control-sm" id="wacheBuyNr" name="wache_number" min="1" placeholder="1">
                                 </div>
                                 <div class="col-auto">
                                     <button type="button" class="btn btn-sm btn-outline-secondary" id="wacheBuyGenBtn" title="Namen generieren">
@@ -277,8 +277,9 @@
                             </div>
                             {% endif %}
                             <div class="mb-3">
-                                <label class="form-label">Name der Wache</label>
-                                <input type="text" name="wache_name" class="form-control" id="wacheBuyName" required placeholder="z.B. FF-LIN">
+                                <label class="form-label">Name der Wache (optional)</label>
+                                <input type="text" name="wache_name" class="form-control" id="wacheBuyName" placeholder="Wird aus Org/Standort erzeugt, falls leer">
+                                <small class="text-muted">Wenn oben Org-Typ (und optional Standort/Nr.) gesetzt ist, wird der Name automatisch gefuellt.</small>
                             </div>
                             <div class="mb-3">
                                 <label class="form-label">Wachen-Typ</label>
@@ -1052,6 +1053,7 @@ function initPlannerPage() {
     const wacheBuyName = document.getElementById('wacheBuyName');
     const wacheBuyGenBtn = document.getElementById('wacheBuyGenBtn');
     const wacheBuyBulkHint = document.getElementById('wacheBuyBulkHint');
+    const formWacheBuy = document.getElementById('formWacheBuy');
 
     function applyNoLocWache() {
         if (!wacheBuyOrg) return;
@@ -1098,9 +1100,38 @@ function initPlannerPage() {
         wacheBuyBulkHint.textContent = 'Dieser Typ hat ' + extraLevels + ' zusätzliche Ausbaustufe(n) und ' + upgradeCount + ' Erweiterung(en).';
     }
 
+    function maybeAutofillWacheName() {
+        if (!wacheBuyName) {
+            return;
+        }
+        if (wacheBuyName.dataset.manualEdit === '1') {
+            return;
+        }
+        const name = generateWacheName();
+        wacheBuyName.value = name || '';
+    }
+
     if (wacheBuyOrg) {
-        wacheBuyOrg.addEventListener('change', applyNoLocWache);
+        wacheBuyOrg.addEventListener('change', function() {
+            applyNoLocWache();
+            maybeAutofillWacheName();
+        });
         applyNoLocWache();
+        maybeAutofillWacheName();
+    }
+
+    if (wacheBuyLoc) {
+        wacheBuyLoc.addEventListener('change', maybeAutofillWacheName);
+    }
+
+    if (wacheBuyNr) {
+        wacheBuyNr.addEventListener('input', maybeAutofillWacheName);
+    }
+
+    if (wacheBuyName) {
+        wacheBuyName.addEventListener('input', function() {
+            wacheBuyName.dataset.manualEdit = wacheBuyName.value.trim() ? '1' : '0';
+        });
     }
 
     if (wacheBuyType) {
@@ -1111,7 +1142,18 @@ function initPlannerPage() {
     if (wacheBuyGenBtn) {
         wacheBuyGenBtn.addEventListener('click', function() {
             const name = generateWacheName();
-            if (name && wacheBuyName) wacheBuyName.value = name;
+            if (name && wacheBuyName) {
+                wacheBuyName.value = name;
+                wacheBuyName.dataset.manualEdit = '0';
+            }
+        });
+    }
+
+    if (formWacheBuy) {
+        formWacheBuy.addEventListener('submit', function() {
+            if (wacheBuyName && !wacheBuyName.value.trim()) {
+                wacheBuyName.value = generateWacheName();
+            }
         });
     }
 }
