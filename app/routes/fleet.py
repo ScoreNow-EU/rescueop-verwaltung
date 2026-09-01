@@ -3,7 +3,8 @@ from app import db
 from app.access import assign_active_savegame, scoped, scoped_get_or_404
 from app.models import (VehicleType, VehicleModule, WacheType, WacheLevel,
                         MyWache, MyVehicle, WacheUpgrade, my_vehicle_modules,
-                        NamingOrgType, NamingLocation, WacheStandardVehicle)
+                        NamingOrgType, NamingLocation, WacheStandardVehicle,
+                        WacheStandardVehicleItem)
 
 fleet_bp = Blueprint('fleet', __name__)
 
@@ -46,18 +47,37 @@ def add_wache():
     created_standard_count = 0
     skipped_standard_count = 0
     if include_standard_vehicles:
-        standard_rows = scoped(WacheStandardVehicle).filter_by(wache_type_id=wt.id).all()
-        for row in standard_rows:
-            vehicle_type = scoped(VehicleType).filter_by(id=row.vehicle_type_id).first()
-            if not vehicle_type:
-                skipped_standard_count += row.quantity
-                continue
-            for _ in range(max(0, row.quantity)):
-                v = MyVehicle(my_wache_id=w.id, vehicle_type_id=vehicle_type.id)
-                assign_active_savegame(v)
-                v.installed_modules = list(vehicle_type.standard_modules)
-                db.session.add(v)
-                created_standard_count += 1
+        standard_items = scoped(WacheStandardVehicleItem).filter_by(wache_type_id=wt.id).all()
+
+        if standard_items:
+            for item in standard_items:
+                vehicle_type = scoped(VehicleType).filter_by(id=item.vehicle_type_id).first()
+                if not vehicle_type:
+                    skipped_standard_count += max(1, item.quantity or 1)
+                    continue
+                for _ in range(max(1, item.quantity or 1)):
+                    v = MyVehicle(my_wache_id=w.id, vehicle_type_id=vehicle_type.id)
+                    assign_active_savegame(v)
+                    if item.selected_modules:
+                        v.installed_modules = list(item.selected_modules)
+                    elif vehicle_type.standard_modules:
+                        v.installed_modules = list(vehicle_type.standard_modules)
+                    db.session.add(v)
+                    created_standard_count += 1
+        else:
+            # Legacy fallback for quantity-only configs.
+            standard_rows = scoped(WacheStandardVehicle).filter_by(wache_type_id=wt.id).all()
+            for row in standard_rows:
+                vehicle_type = scoped(VehicleType).filter_by(id=row.vehicle_type_id).first()
+                if not vehicle_type:
+                    skipped_standard_count += row.quantity
+                    continue
+                for _ in range(max(0, row.quantity)):
+                    v = MyVehicle(my_wache_id=w.id, vehicle_type_id=vehicle_type.id)
+                    assign_active_savegame(v)
+                    v.installed_modules = list(vehicle_type.standard_modules)
+                    db.session.add(v)
+                    created_standard_count += 1
 
     db.session.commit()
     if include_standard_vehicles:

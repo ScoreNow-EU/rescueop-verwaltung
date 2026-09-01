@@ -24,6 +24,8 @@ from app.models import (
     VehicleModule,
     VehicleType,
     WacheLevel,
+    WacheStandardVehicleItem,
+    wache_standard_vehicle_item_modules,
     WacheStandardVehicle,
     WacheType,
     WacheUpgrade,
@@ -146,6 +148,8 @@ def _clear_savegame_runtime_data(savegame_id):
 def _clear_global_catalog(admin_savegame_id):
     db.session.execute(vehicle_type_modules.delete())
     db.session.execute(vehicle_type_standard_modules.delete())
+    db.session.execute(wache_standard_vehicle_item_modules.delete())
+    WacheStandardVehicleItem.query.filter_by(savegame_id=admin_savegame_id).delete(synchronize_session=False)
     WacheStandardVehicle.query.filter_by(savegame_id=admin_savegame_id).delete(synchronize_session=False)
     NamingPreset.query.filter_by(savegame_id=admin_savegame_id).delete(synchronize_session=False)
     WacheLevel.query.filter_by(savegame_id=admin_savegame_id).delete(synchronize_session=False)
@@ -176,6 +180,8 @@ def _import_backup_into_active_savegame(sqlite_path, include_global):
             'wache_level': _sqlite_fetch_rows(conn, 'wache_level'),
             'wache_upgrade': _sqlite_fetch_rows(conn, 'wache_upgrade'),
             'wache_standard_vehicle': _sqlite_fetch_rows(conn, 'wache_standard_vehicle'),
+            'wache_standard_vehicle_item': _sqlite_fetch_rows(conn, 'wache_standard_vehicle_item'),
+            'wache_standard_vehicle_item_modules': _sqlite_fetch_rows(conn, 'wache_standard_vehicle_item_modules'),
             'naming_org_type': _sqlite_fetch_rows(conn, 'naming_org_type'),
             'naming_location': _sqlite_fetch_rows(conn, 'naming_location'),
             'naming_preset': _sqlite_fetch_rows(conn, 'naming_preset'),
@@ -193,6 +199,7 @@ def _import_backup_into_active_savegame(sqlite_path, include_global):
     vehicle_type_id_map = {}
     wache_type_id_map = {}
     wache_upgrade_id_map = {}
+    wache_standard_vehicle_item_id_map = {}
 
     _clear_savegame_runtime_data(active_savegame_id)
 
@@ -296,6 +303,31 @@ def _import_backup_into_active_savegame(sqlite_path, include_global):
                 wache_type_id=mapped_wache_type_id,
                 vehicle_type_id=mapped_vehicle_type_id,
                 quantity=quantity,
+            ))
+
+        for row in source['wache_standard_vehicle_item']:
+            mapped_wache_type_id = wache_type_id_map.get(row.get('wache_type_id'))
+            mapped_vehicle_type_id = vehicle_type_id_map.get(row.get('vehicle_type_id'))
+            if not mapped_wache_type_id or not mapped_vehicle_type_id:
+                continue
+            item = WacheStandardVehicleItem(
+                savegame_id=admin_savegame_id,
+                wache_type_id=mapped_wache_type_id,
+                vehicle_type_id=mapped_vehicle_type_id,
+                quantity=max(1, row.get('quantity') or 1),
+            )
+            db.session.add(item)
+            db.session.flush()
+            wache_standard_vehicle_item_id_map[row.get('id')] = item.id
+
+        for row in source['wache_standard_vehicle_item_modules']:
+            mapped_item_id = wache_standard_vehicle_item_id_map.get(row.get('wache_standard_vehicle_item_id'))
+            mapped_module_id = module_id_map.get(row.get('vehicle_module_id'))
+            if not mapped_item_id or not mapped_module_id:
+                continue
+            db.session.execute(wache_standard_vehicle_item_modules.insert().values(
+                wache_standard_vehicle_item_id=mapped_item_id,
+                vehicle_module_id=mapped_module_id,
             ))
 
         for row in source['naming_preset']:
@@ -489,9 +521,9 @@ def index():
     vehicle_types = scoped(VehicleType).order_by(VehicleType.name).all()
     wache_types = scoped(WacheType).order_by(WacheType.name).all()
     all_modules = scoped(VehicleModule).order_by(VehicleModule.name).all()
-    standard_vehicle_qty = {}
-    for cfg in scoped(WacheStandardVehicle).all():
-        standard_vehicle_qty.setdefault(cfg.wache_type_id, {})[cfg.vehicle_type_id] = cfg.quantity
+    standard_vehicle_items_by_wache = {}
+    for cfg in scoped(WacheStandardVehicleItem).order_by(WacheStandardVehicleItem.id).all():
+        standard_vehicle_items_by_wache.setdefault(cfg.wache_type_id, []).append(cfg)
     preview_wachen = scoped(MyWache).order_by(MyWache.name).all()
     naming_presets = scoped(NamingPreset).order_by(NamingPreset.is_default.desc(), NamingPreset.name).all()
     if not naming_presets and active_savegame_is_admin():
@@ -511,7 +543,7 @@ def index():
                            org_types=org_types, locations=locations,
                            vehicle_types=vehicle_types, all_modules=all_modules,
                            wache_types=wache_types,
-                           standard_vehicle_qty=standard_vehicle_qty,
+                           standard_vehicle_items_by_wache=standard_vehicle_items_by_wache,
                            preview_wachen=preview_wachen,
                            naming_presets=naming_presets,
                            naming_tokens=NAMING_TOKEN_CATALOG)
@@ -720,43 +752,42 @@ def save_standard_modules(vtid):
 def save_wache_standard_vehicles(wtid):
     wt = scoped_get_or_404(WacheType, wtid)
     valid_vehicle_ids = {vt.id for vt in scoped(VehicleType).all()}
-    current_rows = {
-        row.vehicle_type_id: row
-        for row in scoped(WacheStandardVehicle).filter_by(wache_type_id=wt.id).all()
-    }
 
-    selected_vehicle_ids = request.form.getlist('vehicle_type_ids', type=int)
-    kept_vehicle_ids = set()
+    # Replace full config for this wache type (planner-like row model).
+    existing_items = scoped(WacheStandardVehicleItem).filter_by(wache_type_id=wt.id).all()
+    for item in existing_items:
+        db.session.delete(item)
+
+    row_keys = request.form.getlist('row_keys')
     saved_count = 0
-
-    for vehicle_type_id in selected_vehicle_ids:
-        if vehicle_type_id not in valid_vehicle_ids:
-            continue
-        qty = request.form.get(f'quantity_{vehicle_type_id}', 0, type=int) or 0
-        qty = max(0, qty)
-        existing = current_rows.get(vehicle_type_id)
-        if qty <= 0:
-            if existing:
-                db.session.delete(existing)
+    for row_key in row_keys:
+        vehicle_type_id = request.form.get(f'vehicle_type_id_{row_key}', type=int)
+        quantity = request.form.get(f'quantity_{row_key}', 1, type=int) or 1
+        quantity = max(1, min(quantity, 100))
+        if not vehicle_type_id or vehicle_type_id not in valid_vehicle_ids:
             continue
 
-        if existing:
-            existing.quantity = qty
-        else:
-            row = WacheStandardVehicle(
-                wache_type_id=wt.id,
-                vehicle_type_id=vehicle_type_id,
-                quantity=qty,
-            )
-            assign_active_savegame(row)
-            db.session.add(row)
-        kept_vehicle_ids.add(vehicle_type_id)
-        saved_count += qty
+        item = WacheStandardVehicleItem(
+            wache_type_id=wt.id,
+            vehicle_type_id=vehicle_type_id,
+            quantity=quantity,
+        )
+        assign_active_savegame(item)
+        db.session.add(item)
+        db.session.flush()
 
-    for vehicle_type_id, row in current_rows.items():
-        if vehicle_type_id in kept_vehicle_ids:
-            continue
-        db.session.delete(row)
+        module_ids = request.form.getlist(f'module_ids_{row_key}', type=int)
+        if module_ids:
+            vt = scoped(VehicleType).filter_by(id=vehicle_type_id).first()
+            allowed_module_ids = {m.id for m in (vt.modules if vt else [])}
+            safe_module_ids = [mid for mid in module_ids if mid in allowed_module_ids]
+            if safe_module_ids:
+                item.selected_modules = scoped(VehicleModule).filter(VehicleModule.id.in_(safe_module_ids)).all()
+
+        saved_count += quantity
+
+    # Keep legacy table empty once planner-like configs are used.
+    scoped(WacheStandardVehicle).filter_by(wache_type_id=wt.id).delete(synchronize_session=False)
 
     db.session.commit()
     flash(f'Standard-Fahrzeuge für „{wt.name}" gespeichert ({saved_count} gesamt).', 'success')

@@ -519,14 +519,14 @@
     <div class="tab-pane fade" id="stdveh" role="tabpanel">
         <p class="text-muted mb-4">
             Lege hier fest, welche Fahrzeuge beim Erstellen einer Wache eines Typs automatisch angelegt werden.
-            Die Funktion nutzt pro Fahrzeugtyp eine Anzahl.
+            Pro Zeile kannst du Fahrzeugtyp, Menge und Module wie im Planer festlegen.
         </p>
 
         {% if wache_types and vehicle_types %}
         <div class="accordion" id="stdVehAccordion">
             {% for wt in wache_types %}
-            {% set qty_map = standard_vehicle_qty.get(wt.id, {}) %}
-            {% set total_qty = qty_map.values()|sum %}
+            {% set std_items = standard_vehicle_items_by_wache.get(wt.id, []) %}
+            {% set total_qty = std_items | sum(attribute='quantity') %}
             <div class="accordion-item">
                 <h2 class="accordion-header">
                     <button class="accordion-button collapsed" type="button"
@@ -543,37 +543,72 @@
                     <div class="accordion-body">
                         <form method="post" action="/standards/wache_vehicles/{{ wt.id }}/save" data-async="1" data-keep-open-id="stdveh-{{ wt.id }}">
                             <p class="text-muted small mb-2">
-                                Trage pro Fahrzeugtyp die gewünschte Anzahl ein (0 = nicht automatisch hinzufügen).
+                                Jede Zeile entspricht einer Konfiguration wie im Planer.
                             </p>
-                            <div class="row g-2 mb-3">
-                                {% for vt in vehicle_types %}
-                                {% set qty = qty_map.get(vt.id, 0) %}
-                                <div class="col-md-6 col-lg-4">
-                                    <div class="border rounded p-2 h-100">
-                                        <input type="hidden" name="vehicle_type_ids" value="{{ vt.id }}">
-                                        <div class="d-flex align-items-center gap-2 mb-2">
-                                            {% if vt.image %}
-                                            <img src="/assets/vehicles/{{ vt.image }}" alt="{{ vt.name }}" class="vehicle-thumb">
-                                            {% else %}
-                                            <span class="vehicle-thumb-placeholder"><i class="bi bi-truck"></i></span>
-                                            {% endif %}
-                                            <div>
-                                                <strong>{{ vt.name }}</strong>
-                                                {% if vt.abbreviation %}
-                                                <div class="small text-muted">{{ vt.abbreviation }}</div>
-                                                {% endif %}
+                            <div class="stdveh-items" data-wtid="{{ wt.id }}">
+                                {% if std_items %}
+                                {% for item in std_items %}
+                                {% set row_key = 'existing_' ~ item.id %}
+                                {% set selected_mod_ids = item.selected_modules | map(attribute='id') | list %}
+                                <div class="card mb-2 stdveh-item" data-row-key="{{ row_key }}">
+                                    <input type="hidden" name="row_keys" value="{{ row_key }}">
+                                    <div class="card-body p-2">
+                                        <div class="row g-2 align-items-end">
+                                            <div class="col-md-6">
+                                                <label class="form-label form-label-sm mb-1">Fahrzeugtyp</label>
+                                                <select class="form-select form-select-sm stdveh-type-select"
+                                                        name="vehicle_type_id_{{ row_key }}"
+                                                        data-row-key="{{ row_key }}"
+                                                        data-mod-target="stdveh-modules-{{ row_key }}">
+                                                    <option value="">— wählen —</option>
+                                                    {% for vt in vehicle_types %}
+                                                    <option value="{{ vt.id }}" {% if vt.id == item.vehicle_type_id %}selected{% endif %}>{{ vt.name }}{% if vt.abbreviation %} ({{ vt.abbreviation }}){% endif %}</option>
+                                                    {% endfor %}
+                                                </select>
+                                            </div>
+                                            <div class="col-md-3">
+                                                <label class="form-label form-label-sm mb-1">Menge</label>
+                                                <input type="number" class="form-control form-control-sm"
+                                                       name="quantity_{{ row_key }}" value="{{ item.quantity }}"
+                                                       min="1" max="100" step="1">
+                                            </div>
+                                            <div class="col-md-3 text-end">
+                                                <button type="button" class="btn btn-sm btn-outline-danger stdveh-remove-row">
+                                                    <i class="bi bi-trash"></i> Entfernen
+                                                </button>
                                             </div>
                                         </div>
-                                        <label class="form-label form-label-sm mb-1" for="stdveh_qty_{{ wt.id }}_{{ vt.id }}">Anzahl</label>
-                                        <input type="number"
-                                               class="form-control form-control-sm"
-                                               id="stdveh_qty_{{ wt.id }}_{{ vt.id }}"
-                                               name="quantity_{{ vt.id }}"
-                                               min="0" max="99" step="1"
-                                               value="{{ qty }}">
+                                        <div class="mt-2" id="stdveh-modules-{{ row_key }}">
+                                            {% if item.vehicle_type and item.vehicle_type.modules %}
+                                            <div class="row g-2">
+                                                {% for mod in item.vehicle_type.modules %}
+                                                {% set checked = (mod.id in selected_mod_ids) or (not selected_mod_ids and (mod in item.vehicle_type.standard_modules)) %}
+                                                <div class="col-md-6">
+                                                    <div class="form-check">
+                                                        <input class="form-check-input" type="checkbox"
+                                                               name="module_ids_{{ row_key }}" value="{{ mod.id }}"
+                                                               id="stdveh_{{ row_key }}_mod_{{ mod.id }}"
+                                                               {% if checked %}checked{% endif %}>
+                                                        <label class="form-check-label" for="stdveh_{{ row_key }}_mod_{{ mod.id }}">
+                                                            {{ mod.name }} <small class="text-muted">({{ '{:,.0f}'.format(mod.price).replace(',', '.') }} €)</small>
+                                                        </label>
+                                                    </div>
+                                                </div>
+                                                {% endfor %}
+                                            </div>
+                                            {% else %}
+                                            <p class="text-muted small mb-0">Keine kompatiblen Module.</p>
+                                            {% endif %}
+                                        </div>
                                     </div>
                                 </div>
                                 {% endfor %}
+                                {% endif %}
+                            </div>
+                            <div class="d-flex gap-2">
+                                <button type="button" class="btn btn-sm btn-outline-secondary stdveh-add-row" data-wtid="{{ wt.id }}">
+                                    <i class="bi bi-plus-lg me-1"></i>Zeile hinzufügen
+                                </button>
                             </div>
                             <button type="submit" class="btn btn-sm btn-primary">
                                 <i class="bi bi-check-lg me-1"></i>Speichern
@@ -742,6 +777,42 @@
         </form>
     </div>
 </div>
+
+<template id="stdvehRowTemplate">
+    <div class="card mb-2 stdveh-item" data-row-key="__ROW_KEY__">
+        <input type="hidden" name="row_keys" value="__ROW_KEY__">
+        <div class="card-body p-2">
+            <div class="row g-2 align-items-end">
+                <div class="col-md-6">
+                    <label class="form-label form-label-sm mb-1">Fahrzeugtyp</label>
+                    <select class="form-select form-select-sm stdveh-type-select"
+                            name="vehicle_type_id___ROW_KEY__"
+                            data-row-key="__ROW_KEY__"
+                            data-mod-target="stdveh-modules-__ROW_KEY__">
+                        <option value="">— wählen —</option>
+                        {% for vt in vehicle_types %}
+                        <option value="{{ vt.id }}">{{ vt.name }}{% if vt.abbreviation %} ({{ vt.abbreviation }}){% endif %}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label form-label-sm mb-1">Menge</label>
+                    <input type="number" class="form-control form-control-sm"
+                           name="quantity___ROW_KEY__" value="1"
+                           min="1" max="100" step="1">
+                </div>
+                <div class="col-md-3 text-end">
+                    <button type="button" class="btn btn-sm btn-outline-danger stdveh-remove-row">
+                        <i class="bi bi-trash"></i> Entfernen
+                    </button>
+                </div>
+            </div>
+            <div class="mt-2" id="stdveh-modules-__ROW_KEY__">
+                <p class="text-muted small mb-0">Fahrzeugtyp auswählen, dann Module wählen.</p>
+            </div>
+        </div>
+    </div>
+</template>
 
 {% endblock %}
 
@@ -962,7 +1033,115 @@ function initStandardsPreview() {
     updatePreview();
 }
 
+function initStandardsVehicleRows() {
+    var pageRoot = document.getElementById('standardsPageRoot');
+    if (!pageRoot) {
+        return;
+    }
+
+    var rowTemplate = document.getElementById('stdvehRowTemplate');
+    var rowCounter = 0;
+
+    function makeRowKey(wtid) {
+        rowCounter += 1;
+        return 'new_' + wtid + '_' + Date.now() + '_' + rowCounter;
+    }
+
+    function moduleCheckboxHtml(rowKey, mod) {
+        var modId = 'stdveh_' + rowKey + '_mod_' + mod.id;
+        var checked = mod.is_standard ? ' checked' : '';
+        return ''
+            + '<div class="col-md-6">'
+            + '  <div class="form-check">'
+            + '    <input class="form-check-input" type="checkbox" name="module_ids_' + rowKey + '" value="' + mod.id + '" id="' + modId + '"' + checked + '>'
+            + '    <label class="form-check-label" for="' + modId + '">' + mod.name + ' <small class="text-muted">(' + Number(mod.price || 0).toLocaleString('de-DE') + ' €)</small></label>'
+            + '  </div>'
+            + '</div>';
+    }
+
+    function loadModulesForSelect(selectEl) {
+        if (!selectEl) {
+            return;
+        }
+        var rowKey = selectEl.dataset.rowKey;
+        var targetId = selectEl.dataset.modTarget;
+        var target = document.getElementById(targetId);
+        if (!target) {
+            return;
+        }
+        var vtid = parseInt(selectEl.value || '0', 10);
+        if (!vtid) {
+            target.innerHTML = '<p class="text-muted small mb-0">Fahrzeugtyp auswählen, dann Module wählen.</p>';
+            return;
+        }
+        fetch('/planner/api/vehicle_modules/' + vtid)
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                var mods = (data && data.modules) ? data.modules : [];
+                if (!mods.length) {
+                    target.innerHTML = '<p class="text-muted small mb-0">Keine kompatiblen Module.</p>';
+                    return;
+                }
+                var html = '<div class="row g-2">';
+                mods.forEach(function(mod) {
+                    html += moduleCheckboxHtml(rowKey, mod);
+                });
+                html += '</div>';
+                target.innerHTML = html;
+            })
+            .catch(function() {
+                target.innerHTML = '<p class="text-danger small mb-0">Module konnten nicht geladen werden.</p>';
+            });
+    }
+
+    function bindRow(rowEl) {
+        if (!rowEl || rowEl.dataset.bound === '1') {
+            return;
+        }
+        rowEl.dataset.bound = '1';
+
+        var removeBtn = rowEl.querySelector('.stdveh-remove-row');
+        if (removeBtn) {
+            removeBtn.addEventListener('click', function() {
+                rowEl.remove();
+            });
+        }
+
+        var typeSelect = rowEl.querySelector('.stdveh-type-select');
+        if (typeSelect) {
+            typeSelect.addEventListener('change', function() {
+                loadModulesForSelect(typeSelect);
+            });
+        }
+    }
+
+    document.querySelectorAll('.stdveh-item').forEach(bindRow);
+
+    document.querySelectorAll('.stdveh-add-row').forEach(function(btn) {
+        if (btn.dataset.bound === '1') {
+            return;
+        }
+        btn.dataset.bound = '1';
+        btn.addEventListener('click', function() {
+            var wtid = btn.dataset.wtid;
+            var wrapper = btn.closest('form').querySelector('.stdveh-items');
+            if (!wrapper || !rowTemplate) {
+                return;
+            }
+            var rowKey = makeRowKey(wtid);
+            var html = rowTemplate.innerHTML.replaceAll('__ROW_KEY__', rowKey);
+            var temp = document.createElement('div');
+            temp.innerHTML = html;
+            var rowEl = temp.firstElementChild;
+            wrapper.appendChild(rowEl);
+            bindRow(rowEl);
+        });
+    });
+}
+
 document.addEventListener('DOMContentLoaded', initStandardsPreview);
 document.addEventListener('app:content-updated', initStandardsPreview);
+document.addEventListener('DOMContentLoaded', initStandardsVehicleRows);
+document.addEventListener('app:content-updated', initStandardsVehicleRows);
 </script>
 {% endblock %}

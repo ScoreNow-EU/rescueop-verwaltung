@@ -160,6 +160,29 @@ class WacheStandardVehicle(db.Model):
     )
 
 
+wache_standard_vehicle_item_modules = db.Table(
+    'wache_standard_vehicle_item_modules',
+    db.Column('wache_standard_vehicle_item_id', db.Integer,
+              db.ForeignKey('wache_standard_vehicle_item.id'), primary_key=True),
+    db.Column('vehicle_module_id', db.Integer, db.ForeignKey('vehicle_module.id'), primary_key=True),
+)
+
+
+class WacheStandardVehicleItem(db.Model):
+    """Planner-like standard vehicles per wache type with custom module selection."""
+    __tablename__ = 'wache_standard_vehicle_item'
+    id = db.Column(db.Integer, primary_key=True)
+    savegame_id = db.Column(db.Integer, db.ForeignKey('savegame.id'), nullable=False, index=True)
+    wache_type_id = db.Column(db.Integer, db.ForeignKey('wache_type.id'), nullable=False, index=True)
+    vehicle_type_id = db.Column(db.Integer, db.ForeignKey('vehicle_type.id'), nullable=False, index=True)
+    quantity = db.Column(db.Integer, nullable=False, default=1)
+
+    wache_type = db.relationship('WacheType', backref=db.backref(
+        'standard_vehicle_items', lazy=True, cascade='all, delete-orphan'))
+    vehicle_type = db.relationship('VehicleType', lazy=True)
+    selected_modules = db.relationship('VehicleModule', secondary=wache_standard_vehicle_item_modules, lazy=True)
+
+
 # M2M: which upgrades are installed on a specific MyWache
 my_wache_upgrades = db.Table(
     'my_wache_upgrades',

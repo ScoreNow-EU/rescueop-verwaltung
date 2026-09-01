@@ -230,6 +230,7 @@ def _bootstrap_auth_defaults():
         VehicleType,
         WacheLevel,
         WacheStandardVehicle,
+        WacheStandardVehicleItem,
         WacheType,
         WacheUpgrade,
     )
@@ -281,6 +282,7 @@ def _bootstrap_auth_defaults():
         WacheLevel,
         WacheUpgrade,
         WacheStandardVehicle,
+        WacheStandardVehicleItem,
         NamingPreset,
     ]
 
@@ -485,6 +487,48 @@ def _migrate_standards_if_needed(database):
                 '  CONSTRAINT uq_wache_std_vehicle_per_type UNIQUE (savegame_id, wache_type_id, vehicle_type_id)'
                 ')'
             ))
+
+        if 'wache_standard_vehicle_item' not in inspector.get_table_names():
+            conn.execute(sqlalchemy.text(
+                'CREATE TABLE wache_standard_vehicle_item ('
+                '  id INTEGER PRIMARY KEY,'
+                '  savegame_id INTEGER NOT NULL REFERENCES savegame(id),'
+                '  wache_type_id INTEGER NOT NULL REFERENCES wache_type(id),'
+                '  vehicle_type_id INTEGER NOT NULL REFERENCES vehicle_type(id),'
+                '  quantity INTEGER NOT NULL DEFAULT 1'
+                ')'
+            ))
+
+        if 'wache_standard_vehicle_item_modules' not in inspector.get_table_names():
+            conn.execute(sqlalchemy.text(
+                'CREATE TABLE wache_standard_vehicle_item_modules ('
+                '  wache_standard_vehicle_item_id INTEGER NOT NULL REFERENCES wache_standard_vehicle_item(id),'
+                '  vehicle_module_id INTEGER NOT NULL REFERENCES vehicle_module(id),'
+                '  PRIMARY KEY (wache_standard_vehicle_item_id, vehicle_module_id)'
+                ')'
+            ))
+
+        # One-time backfill from legacy quantity-only standards if the new table is empty.
+        if 'wache_standard_vehicle' in inspector.get_table_names():
+            has_rows = conn.execute(sqlalchemy.text(
+                'SELECT COUNT(*) FROM wache_standard_vehicle_item'
+            )).scalar() or 0
+            if has_rows == 0:
+                rows = conn.execute(sqlalchemy.text(
+                    'SELECT savegame_id, wache_type_id, vehicle_type_id, quantity '
+                    'FROM wache_standard_vehicle WHERE quantity > 0'
+                )).fetchall()
+                for row in rows:
+                    conn.execute(sqlalchemy.text(
+                        'INSERT INTO wache_standard_vehicle_item '
+                        '(savegame_id, wache_type_id, vehicle_type_id, quantity) '
+                        'VALUES (:savegame_id, :wache_type_id, :vehicle_type_id, :quantity)'
+                    ), {
+                        'savegame_id': row.savegame_id,
+                        'wache_type_id': row.wache_type_id,
+                        'vehicle_type_id': row.vehicle_type_id,
+                        'quantity': row.quantity,
+                    })
 
 
 def _migrate_maintenance_costs_if_needed(database):
