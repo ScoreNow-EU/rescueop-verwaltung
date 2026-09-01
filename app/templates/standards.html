@@ -27,6 +27,12 @@
             <i class="bi bi-gear me-1"></i>Standard-Module
         </button>
     </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="stdveh-tab" data-bs-toggle="tab" data-bs-target="#stdveh"
+                type="button" role="tab">
+            <i class="bi bi-truck me-1"></i>Standard-Fahrzeuge
+        </button>
+    </li>
 </ul>
 
 <div class="tab-content" id="standardsTabContent">
@@ -508,6 +514,82 @@
         <div class="alert alert-info">Noch keine Fahrzeugtypen vorhanden.</div>
         {% endif %}
     </div><!-- /stdmod tab -->
+
+    <!-- ===== TAB: Standard-Fahrzeuge ===== -->
+    <div class="tab-pane fade" id="stdveh" role="tabpanel">
+        <p class="text-muted mb-4">
+            Lege hier fest, welche Fahrzeuge beim Erstellen einer Wache eines Typs automatisch angelegt werden.
+            Die Funktion nutzt pro Fahrzeugtyp eine Anzahl.
+        </p>
+
+        {% if wache_types and vehicle_types %}
+        <div class="accordion" id="stdVehAccordion">
+            {% for wt in wache_types %}
+            {% set qty_map = standard_vehicle_qty.get(wt.id, {}) %}
+            {% set total_qty = qty_map.values()|sum %}
+            <div class="accordion-item">
+                <h2 class="accordion-header">
+                    <button class="accordion-button collapsed" type="button"
+                            data-bs-toggle="collapse" data-bs-target="#stdveh-{{ wt.id }}">
+                        <span class="d-flex align-items-center gap-3 w-100">
+                            <strong>{{ wt.name }}</strong>
+                            <span class="badge bg-primary ms-auto me-3">
+                                {{ total_qty }} Standard-Fahrzeuge
+                            </span>
+                        </span>
+                    </button>
+                </h2>
+                <div id="stdveh-{{ wt.id }}" class="accordion-collapse collapse">
+                    <div class="accordion-body">
+                        <form method="post" action="/standards/wache_vehicles/{{ wt.id }}/save" data-async="1" data-keep-open-id="stdveh-{{ wt.id }}">
+                            <p class="text-muted small mb-2">
+                                Trage pro Fahrzeugtyp die gewünschte Anzahl ein (0 = nicht automatisch hinzufügen).
+                            </p>
+                            <div class="row g-2 mb-3">
+                                {% for vt in vehicle_types %}
+                                {% set qty = qty_map.get(vt.id, 0) %}
+                                <div class="col-md-6 col-lg-4">
+                                    <div class="border rounded p-2 h-100">
+                                        <input type="hidden" name="vehicle_type_ids" value="{{ vt.id }}">
+                                        <div class="d-flex align-items-center gap-2 mb-2">
+                                            {% if vt.image %}
+                                            <img src="/assets/vehicles/{{ vt.image }}" alt="{{ vt.name }}" class="vehicle-thumb">
+                                            {% else %}
+                                            <span class="vehicle-thumb-placeholder"><i class="bi bi-truck"></i></span>
+                                            {% endif %}
+                                            <div>
+                                                <strong>{{ vt.name }}</strong>
+                                                {% if vt.abbreviation %}
+                                                <div class="small text-muted">{{ vt.abbreviation }}</div>
+                                                {% endif %}
+                                            </div>
+                                        </div>
+                                        <label class="form-label form-label-sm mb-1" for="stdveh_qty_{{ wt.id }}_{{ vt.id }}">Anzahl</label>
+                                        <input type="number"
+                                               class="form-control form-control-sm"
+                                               id="stdveh_qty_{{ wt.id }}_{{ vt.id }}"
+                                               name="quantity_{{ vt.id }}"
+                                               min="0" max="99" step="1"
+                                               value="{{ qty }}">
+                                    </div>
+                                </div>
+                                {% endfor %}
+                            </div>
+                            <button type="submit" class="btn btn-sm btn-primary">
+                                <i class="bi bi-check-lg me-1"></i>Speichern
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% elif not wache_types %}
+        <div class="alert alert-info">Noch keine Wachen-Typen vorhanden.</div>
+        {% else %}
+        <div class="alert alert-info">Noch keine Fahrzeugtypen vorhanden.</div>
+        {% endif %}
+    </div><!-- /stdveh tab -->
 
 </div><!-- /tab-content -->
 

@@ -24,6 +24,7 @@ from app.models import (
     VehicleModule,
     VehicleType,
     WacheLevel,
+    WacheStandardVehicle,
     WacheType,
     WacheUpgrade,
     my_vehicle_modules,
@@ -145,6 +146,7 @@ def _clear_savegame_runtime_data(savegame_id):
 def _clear_global_catalog(admin_savegame_id):
     db.session.execute(vehicle_type_modules.delete())
     db.session.execute(vehicle_type_standard_modules.delete())
+    WacheStandardVehicle.query.filter_by(savegame_id=admin_savegame_id).delete(synchronize_session=False)
     NamingPreset.query.filter_by(savegame_id=admin_savegame_id).delete(synchronize_session=False)
     WacheLevel.query.filter_by(savegame_id=admin_savegame_id).delete(synchronize_session=False)
     WacheUpgrade.query.filter_by(savegame_id=admin_savegame_id).delete(synchronize_session=False)
@@ -173,6 +175,7 @@ def _import_backup_into_active_savegame(sqlite_path, include_global):
             'wache_type': _sqlite_fetch_rows(conn, 'wache_type'),
             'wache_level': _sqlite_fetch_rows(conn, 'wache_level'),
             'wache_upgrade': _sqlite_fetch_rows(conn, 'wache_upgrade'),
+            'wache_standard_vehicle': _sqlite_fetch_rows(conn, 'wache_standard_vehicle'),
             'naming_org_type': _sqlite_fetch_rows(conn, 'naming_org_type'),
             'naming_location': _sqlite_fetch_rows(conn, 'naming_location'),
             'naming_preset': _sqlite_fetch_rows(conn, 'naming_preset'),
@@ -278,6 +281,21 @@ def _import_backup_into_active_savegame(sqlite_path, include_global):
             db.session.execute(vehicle_type_standard_modules.insert().values(
                 vehicle_type_id=vtid,
                 vehicle_module_id=mid,
+            ))
+
+        for row in source['wache_standard_vehicle']:
+            mapped_wache_type_id = wache_type_id_map.get(row.get('wache_type_id'))
+            mapped_vehicle_type_id = vehicle_type_id_map.get(row.get('vehicle_type_id'))
+            if not mapped_wache_type_id or not mapped_vehicle_type_id:
+                continue
+            quantity = row.get('quantity') or 0
+            if quantity <= 0:
+                continue
+            db.session.add(WacheStandardVehicle(
+                savegame_id=admin_savegame_id,
+                wache_type_id=mapped_wache_type_id,
+                vehicle_type_id=mapped_vehicle_type_id,
+                quantity=quantity,
             ))
 
         for row in source['naming_preset']:
@@ -469,7 +487,11 @@ def index():
     org_types = scoped(NamingOrgType).order_by(NamingOrgType.abbreviation).all()
     locations = scoped(NamingLocation).order_by(NamingLocation.abbreviation).all()
     vehicle_types = scoped(VehicleType).order_by(VehicleType.name).all()
+    wache_types = scoped(WacheType).order_by(WacheType.name).all()
     all_modules = scoped(VehicleModule).order_by(VehicleModule.name).all()
+    standard_vehicle_qty = {}
+    for cfg in scoped(WacheStandardVehicle).all():
+        standard_vehicle_qty.setdefault(cfg.wache_type_id, {})[cfg.vehicle_type_id] = cfg.quantity
     preview_wachen = scoped(MyWache).order_by(MyWache.name).all()
     naming_presets = scoped(NamingPreset).order_by(NamingPreset.is_default.desc(), NamingPreset.name).all()
     if not naming_presets and active_savegame_is_admin():
@@ -488,6 +510,8 @@ def index():
     return render_template('standards.html', active_tab='standards',
                            org_types=org_types, locations=locations,
                            vehicle_types=vehicle_types, all_modules=all_modules,
+                           wache_types=wache_types,
+                           standard_vehicle_qty=standard_vehicle_qty,
                            preview_wachen=preview_wachen,
                            naming_presets=naming_presets,
                            naming_tokens=NAMING_TOKEN_CATALOG)
@@ -689,6 +713,53 @@ def save_standard_modules(vtid):
     ).all() if selected_ids else []
     db.session.commit()
     flash(f'Standard-Module für „{vt.name}" gespeichert.', 'success')
+    return redirect(url_for('standards.index'))
+
+
+@standards_bp.route('/standards/wache_vehicles/<int:wtid>/save', methods=['POST'])
+def save_wache_standard_vehicles(wtid):
+    wt = scoped_get_or_404(WacheType, wtid)
+    valid_vehicle_ids = {vt.id for vt in scoped(VehicleType).all()}
+    current_rows = {
+        row.vehicle_type_id: row
+        for row in scoped(WacheStandardVehicle).filter_by(wache_type_id=wt.id).all()
+    }
+
+    selected_vehicle_ids = request.form.getlist('vehicle_type_ids', type=int)
+    kept_vehicle_ids = set()
+    saved_count = 0
+
+    for vehicle_type_id in selected_vehicle_ids:
+        if vehicle_type_id not in valid_vehicle_ids:
+            continue
+        qty = request.form.get(f'quantity_{vehicle_type_id}', 0, type=int) or 0
+        qty = max(0, qty)
+        existing = current_rows.get(vehicle_type_id)
+        if qty <= 0:
+            if existing:
+                db.session.delete(existing)
+            continue
+
+        if existing:
+            existing.quantity = qty
+        else:
+            row = WacheStandardVehicle(
+                wache_type_id=wt.id,
+                vehicle_type_id=vehicle_type_id,
+                quantity=qty,
+            )
+            assign_active_savegame(row)
+            db.session.add(row)
+        kept_vehicle_ids.add(vehicle_type_id)
+        saved_count += qty
+
+    for vehicle_type_id, row in current_rows.items():
+        if vehicle_type_id in kept_vehicle_ids:
+            continue
+        db.session.delete(row)
+
+    db.session.commit()
+    flash(f'Standard-Fahrzeuge für „{wt.name}" gespeichert ({saved_count} gesamt).', 'success')
     return redirect(url_for('standards.index'))
 
 

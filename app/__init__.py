@@ -103,7 +103,10 @@ def create_app():
 
         is_write = request.method not in {'GET', 'HEAD', 'OPTIONS'}
         global_catalog_blueprints = {'vehicles', 'modules', 'wachen'}
-        global_catalog_endpoints = {'standards.save_standard_modules'}
+        global_catalog_endpoints = {
+            'standards.save_standard_modules',
+            'standards.save_wache_standard_vehicles',
+        }
         if is_write and (blueprint in global_catalog_blueprints or endpoint in global_catalog_endpoints):
             from app.access import active_savegame_is_admin
             if not active_savegame_is_admin():
@@ -226,6 +229,7 @@ def _bootstrap_auth_defaults():
         VehicleModule,
         VehicleType,
         WacheLevel,
+        WacheStandardVehicle,
         WacheType,
         WacheUpgrade,
     )
@@ -276,6 +280,7 @@ def _bootstrap_auth_defaults():
         WacheType,
         WacheLevel,
         WacheUpgrade,
+        WacheStandardVehicle,
         NamingPreset,
     ]
 
@@ -468,6 +473,18 @@ def _migrate_standards_if_needed(database):
                 conn.execute(sqlalchemy.text(
                     'ALTER TABLE my_wache ADD COLUMN naming_location_id INTEGER REFERENCES naming_location(id)'
                 ))
+
+        if 'wache_standard_vehicle' not in inspector.get_table_names():
+            conn.execute(sqlalchemy.text(
+                'CREATE TABLE wache_standard_vehicle ('
+                '  id INTEGER PRIMARY KEY,'
+                '  savegame_id INTEGER NOT NULL REFERENCES savegame(id),'
+                '  wache_type_id INTEGER NOT NULL REFERENCES wache_type(id),'
+                '  vehicle_type_id INTEGER NOT NULL REFERENCES vehicle_type(id),'
+                '  quantity INTEGER NOT NULL DEFAULT 1,'
+                '  CONSTRAINT uq_wache_std_vehicle_per_type UNIQUE (savegame_id, wache_type_id, vehicle_type_id)'
+                ')'
+            ))
 
 
 def _migrate_maintenance_costs_if_needed(database):

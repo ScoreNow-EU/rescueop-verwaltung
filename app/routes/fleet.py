@@ -3,7 +3,7 @@ from app import db
 from app.access import assign_active_savegame, scoped, scoped_get_or_404
 from app.models import (VehicleType, VehicleModule, WacheType, WacheLevel,
                         MyWache, MyVehicle, WacheUpgrade, my_vehicle_modules,
-                        NamingOrgType, NamingLocation)
+                        NamingOrgType, NamingLocation, WacheStandardVehicle)
 
 fleet_bp = Blueprint('fleet', __name__)
 
@@ -31,6 +31,7 @@ def add_wache():
     wache_type_id = request.form.get('wache_type_id', type=int)
     org_type_id = request.form.get('naming_org_type_id', type=int) or None
     location_id = request.form.get('naming_location_id', type=int) or None
+    include_standard_vehicles = request.form.get('include_standard_vehicles') == '1'
     if not name or not wache_type_id:
         flash('Name und Typ sind erforderlich.', 'danger')
         return redirect(url_for('fleet.index'))
@@ -40,8 +41,36 @@ def add_wache():
                 naming_org_type_id=org_type_id, naming_location_id=location_id)
     assign_active_savegame(w)
     db.session.add(w)
+    db.session.flush()
+
+    created_standard_count = 0
+    skipped_standard_count = 0
+    if include_standard_vehicles:
+        standard_rows = scoped(WacheStandardVehicle).filter_by(wache_type_id=wt.id).all()
+        for row in standard_rows:
+            vehicle_type = scoped(VehicleType).filter_by(id=row.vehicle_type_id).first()
+            if not vehicle_type:
+                skipped_standard_count += row.quantity
+                continue
+            for _ in range(max(0, row.quantity)):
+                v = MyVehicle(my_wache_id=w.id, vehicle_type_id=vehicle_type.id)
+                assign_active_savegame(v)
+                v.installed_modules = list(vehicle_type.standard_modules)
+                db.session.add(v)
+                created_standard_count += 1
+
     db.session.commit()
-    flash(f'Wache „{name}" erstellt.', 'success')
+    if include_standard_vehicles:
+        if skipped_standard_count > 0:
+            flash(
+                f'Wache „{name}" erstellt. {created_standard_count} Standard-Fahrzeuge hinzugefügt, '
+                f'{skipped_standard_count} wegen fehlendem Fahrzeugtyp übersprungen.',
+                'warning'
+            )
+        else:
+            flash(f'Wache „{name}" erstellt. {created_standard_count} Standard-Fahrzeuge hinzugefügt.', 'success')
+    else:
+        flash(f'Wache „{name}" erstellt.', 'success')
     return redirect(url_for('fleet.index', wache=w.id))
 
 
