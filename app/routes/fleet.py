@@ -1,9 +1,10 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash
 from app import db
 from app.access import assign_active_savegame, scoped, scoped_get_or_404
+from app.naming import DEFAULT_NAMING_TEMPLATE, render_vehicle_nickname
 from app.models import (VehicleType, VehicleModule, WacheType, WacheLevel,
                         MyWache, MyVehicle, WacheUpgrade, my_vehicle_modules,
-                        NamingOrgType, NamingLocation, WacheStandardVehicle,
+                        NamingOrgType, NamingLocation, NamingPreset, WacheStandardVehicle,
                         WacheStandardVehicleItem)
 
 fleet_bp = Blueprint('fleet', __name__)
@@ -44,6 +45,12 @@ def add_wache():
     db.session.add(w)
     db.session.flush()
 
+    naming_preset = scoped(NamingPreset).order_by(NamingPreset.is_default.desc(), NamingPreset.name).first()
+    naming_template = naming_preset.template if naming_preset and naming_preset.template else DEFAULT_NAMING_TEMPLATE
+    org_type = scoped(NamingOrgType).filter_by(id=org_type_id).first() if org_type_id else None
+    location = scoped(NamingLocation).filter_by(id=location_id).first() if location_id else None
+    next_number_by_type = {}
+
     created_standard_count = 0
     skipped_standard_count = 0
     if include_standard_vehicles:
@@ -56,12 +63,27 @@ def add_wache():
                     skipped_standard_count += max(1, item.quantity or 1)
                     continue
                 for _ in range(max(1, item.quantity or 1)):
-                    v = MyVehicle(my_wache_id=w.id, vehicle_type_id=vehicle_type.id)
+                    next_number_by_type[vehicle_type.id] = next_number_by_type.get(vehicle_type.id, 0) + 1
+                    module_source = list(item.selected_modules) if item.selected_modules else list(vehicle_type.standard_modules)
+                    nickname = render_vehicle_nickname(
+                        naming_template,
+                        org_short=org_type.abbreviation if org_type else '',
+                        org_full=org_type.full_name if org_type else '',
+                        location_short=location.abbreviation if location else '',
+                        location_full=location.full_name if location else '',
+                        no_location=bool(org_type and org_type.no_location),
+                        vehicle_name=vehicle_type.name,
+                        vehicle_short=vehicle_type.abbreviation or '',
+                        number=next_number_by_type[vehicle_type.id],
+                        module_names=[m.name for m in module_source],
+                        wache_name=w.name,
+                        wache_type=wt.name,
+                        wache_level=w.current_level,
+                    )
+                    v = MyVehicle(my_wache_id=w.id, vehicle_type_id=vehicle_type.id, nickname=nickname or None)
                     assign_active_savegame(v)
-                    if item.selected_modules:
-                        v.installed_modules = list(item.selected_modules)
-                    elif vehicle_type.standard_modules:
-                        v.installed_modules = list(vehicle_type.standard_modules)
+                    if module_source:
+                        v.installed_modules = module_source
                     db.session.add(v)
                     created_standard_count += 1
         else:
@@ -73,9 +95,26 @@ def add_wache():
                     skipped_standard_count += row.quantity
                     continue
                 for _ in range(max(0, row.quantity)):
-                    v = MyVehicle(my_wache_id=w.id, vehicle_type_id=vehicle_type.id)
+                    next_number_by_type[vehicle_type.id] = next_number_by_type.get(vehicle_type.id, 0) + 1
+                    module_source = list(vehicle_type.standard_modules)
+                    nickname = render_vehicle_nickname(
+                        naming_template,
+                        org_short=org_type.abbreviation if org_type else '',
+                        org_full=org_type.full_name if org_type else '',
+                        location_short=location.abbreviation if location else '',
+                        location_full=location.full_name if location else '',
+                        no_location=bool(org_type and org_type.no_location),
+                        vehicle_name=vehicle_type.name,
+                        vehicle_short=vehicle_type.abbreviation or '',
+                        number=next_number_by_type[vehicle_type.id],
+                        module_names=[m.name for m in module_source],
+                        wache_name=w.name,
+                        wache_type=wt.name,
+                        wache_level=w.current_level,
+                    )
+                    v = MyVehicle(my_wache_id=w.id, vehicle_type_id=vehicle_type.id, nickname=nickname or None)
                     assign_active_savegame(v)
-                    v.installed_modules = list(vehicle_type.standard_modules)
+                    v.installed_modules = module_source
                     db.session.add(v)
                     created_standard_count += 1
 

@@ -3,6 +3,7 @@ from types import SimpleNamespace
 from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify
 from app import db
 from app.access import assign_active_savegame, scoped, scoped_get_or_404
+from app.naming import DEFAULT_NAMING_TEMPLATE, render_vehicle_nickname
 from app.models import (VehicleType, VehicleModule, WacheType, WacheLevel,
                         MyWache, MyVehicle, PlanItem, WacheUpgrade,
                         NamingOrgType, NamingLocation, NamingPreset,
@@ -403,6 +404,11 @@ def add_wache_buy():
 
     next_priority = max_prio + 1
     extras_added = 0
+    next_number_by_type = {}
+    naming_template = DEFAULT_NAMING_TEMPLATE
+    default_preset = scoped(NamingPreset).order_by(NamingPreset.is_default.desc(), NamingPreset.name).first()
+    if default_preset and default_preset.template:
+        naming_template = default_preset.template
 
     if include_all_upgrades:
         level_numbers = sorted(l.level_number for l in wache_type.levels)
@@ -441,12 +447,33 @@ def add_wache_buy():
             for cfg in standard_items:
                 if not cfg.vehicle_type_id:
                     continue
+                vehicle_type = scoped(VehicleType).filter_by(id=cfg.vehicle_type_id).first()
+                if not vehicle_type:
+                    continue
                 quantity = max(1, min(cfg.quantity or 1, 100))
                 for _ in range(quantity):
+                    next_number_by_type[cfg.vehicle_type_id] = next_number_by_type.get(cfg.vehicle_type_id, 0) + 1
+                    module_source = list(cfg.selected_modules) if cfg.selected_modules else list(vehicle_type.standard_modules)
+                    nickname = render_vehicle_nickname(
+                        naming_template,
+                        org_short=org_type.abbreviation if org_type else '',
+                        org_full=org_type.full_name if org_type else '',
+                        location_short=location.abbreviation if location else '',
+                        location_full=location.full_name if location else '',
+                        no_location=bool(org_type and org_type.no_location),
+                        vehicle_name=vehicle_type.name,
+                        vehicle_short=vehicle_type.abbreviation or '',
+                        number=next_number_by_type[cfg.vehicle_type_id],
+                        module_names=[m.name for m in module_source],
+                        wache_name=wache_name,
+                        wache_type=wache_type.name,
+                        wache_level=min((l.level_number for l in wache_type.levels), default=0),
+                    )
                     next_priority += 1
                     veh_item = PlanItem(
                         category='vehicle',
                         vehicle_type_id=cfg.vehicle_type_id,
+                        vehicle_nickname=nickname or None,
                         vehicle_wache_plan_item_id=item.id,
                         priority=next_priority,
                     )
@@ -460,12 +487,33 @@ def add_wache_buy():
             for cfg in scoped(WacheStandardVehicle).filter_by(wache_type_id=wache_type.id).all():
                 if not cfg.vehicle_type_id:
                     continue
+                vehicle_type = scoped(VehicleType).filter_by(id=cfg.vehicle_type_id).first()
+                if not vehicle_type:
+                    continue
                 quantity = max(0, min(cfg.quantity or 0, 100))
                 for _ in range(quantity):
+                    next_number_by_type[cfg.vehicle_type_id] = next_number_by_type.get(cfg.vehicle_type_id, 0) + 1
+                    module_source = list(vehicle_type.standard_modules)
+                    nickname = render_vehicle_nickname(
+                        naming_template,
+                        org_short=org_type.abbreviation if org_type else '',
+                        org_full=org_type.full_name if org_type else '',
+                        location_short=location.abbreviation if location else '',
+                        location_full=location.full_name if location else '',
+                        no_location=bool(org_type and org_type.no_location),
+                        vehicle_name=vehicle_type.name,
+                        vehicle_short=vehicle_type.abbreviation or '',
+                        number=next_number_by_type[cfg.vehicle_type_id],
+                        module_names=[m.name for m in module_source],
+                        wache_name=wache_name,
+                        wache_type=wache_type.name,
+                        wache_level=min((l.level_number for l in wache_type.levels), default=0),
+                    )
                     next_priority += 1
                     veh_item = PlanItem(
                         category='vehicle',
                         vehicle_type_id=cfg.vehicle_type_id,
+                        vehicle_nickname=nickname or None,
                         vehicle_wache_plan_item_id=item.id,
                         priority=next_priority,
                     )
