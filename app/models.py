@@ -355,15 +355,24 @@ class PlanItem(db.Model):
     wache_location = db.relationship('NamingLocation', foreign_keys=[wache_location_id])
     created_wache = db.relationship('MyWache', foreign_keys=[created_wache_id])
     target_wache = db.relationship('MyWache', foreign_keys=[target_wache_id])
+    target_wache_plan_item = db.relationship('PlanItem', remote_side=[id], foreign_keys=[target_wache_plan_item_id])
     vehicle_type = db.relationship('VehicleType', foreign_keys=[vehicle_type_id])
     vehicle_wache = db.relationship('MyWache', foreign_keys=[vehicle_wache_id])
+    vehicle_wache_plan_item = db.relationship('PlanItem', remote_side=[id], foreign_keys=[vehicle_wache_plan_item_id])
     selected_modules = db.relationship('VehicleModule', secondary=plan_item_modules, lazy=True)
     wache_upgrade = db.relationship('WacheUpgrade', foreign_keys=[wache_upgrade_id])
     extension_wache = db.relationship('MyWache', foreign_keys=[extension_wache_id])
+    extension_wache_plan_item = db.relationship('PlanItem', remote_side=[id], foreign_keys=[extension_wache_plan_item_id])
 
     def _planned_wache_item(self, plan_item_id):
         if not plan_item_id:
             return None
+        if self.target_wache_plan_item_id == plan_item_id:
+            return self.target_wache_plan_item
+        if self.vehicle_wache_plan_item_id == plan_item_id:
+            return self.vehicle_wache_plan_item
+        if self.extension_wache_plan_item_id == plan_item_id:
+            return self.extension_wache_plan_item
         return PlanItem.query.filter_by(id=plan_item_id, savegame_id=self.savegame_id).first()
 
     def _resolved_wache_name(self, actual_wache, planned_plan_item_id):

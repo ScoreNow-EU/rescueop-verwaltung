@@ -126,6 +126,20 @@ def create_app():
                 'current_savegame_is_admin': False,
             }
 
+        is_async_fragment = request.headers.get('X-Requested-With') == 'XMLHttpRequest'
+        if is_async_fragment:
+            from app.access import active_savegame_is_admin
+
+            membership = _active_membership()
+            return {
+                'nav_maintenance_total': 0,
+                'current_savegame': None,
+                'user_savegames': [],
+                'current_membership_role': membership.role if membership else None,
+                'current_savegame_members': [],
+                'current_savegame_is_admin': active_savegame_is_admin(),
+            }
+
         from app.access import get_active_savegame_id
         from app.models import MyWache, MyVehicle, Savegame
 

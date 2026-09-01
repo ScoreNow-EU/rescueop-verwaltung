@@ -6,19 +6,37 @@ from app.models import (VehicleType, VehicleModule, WacheType, WacheLevel,
                         MyWache, MyVehicle, WacheUpgrade, my_vehicle_modules,
                         NamingOrgType, NamingLocation, NamingPreset, WacheStandardVehicle,
                         WacheStandardVehicleItem)
+from sqlalchemy.orm import joinedload, selectinload
 
 fleet_bp = Blueprint('fleet', __name__)
 
 
 @fleet_bp.route('/fleet')
 def index():
-    wachen = scoped(MyWache).order_by(MyWache.name).all()
+    wachen = scoped(MyWache).options(
+        joinedload(MyWache.wache_type),
+        joinedload(MyWache.org_type),
+        joinedload(MyWache.location),
+        selectinload(MyWache.vehicles),
+    ).order_by(MyWache.name).all()
     wache_types = scoped(WacheType).order_by(WacheType.name).all()
     vehicle_types = scoped(VehicleType).order_by(VehicleType.name).all()
     org_types = scoped(NamingOrgType).order_by(NamingOrgType.abbreviation).all()
     locations = scoped(NamingLocation).order_by(NamingLocation.abbreviation).all()
     selected_id = request.args.get('wache', type=int)
-    selected = scoped(MyWache).filter_by(id=selected_id).first() if selected_id else (wachen[0] if wachen else None)
+    if selected_id:
+        selected = scoped(MyWache).options(
+            joinedload(MyWache.wache_type).selectinload(WacheType.levels),
+            joinedload(MyWache.wache_type).selectinload(WacheType.upgrades),
+            joinedload(MyWache.org_type),
+            joinedload(MyWache.location),
+            selectinload(MyWache.installed_upgrades),
+            selectinload(MyWache.vehicles).joinedload(MyVehicle.vehicle_type).selectinload(VehicleType.modules),
+            selectinload(MyWache.vehicles).joinedload(MyVehicle.vehicle_type).selectinload(VehicleType.standard_modules),
+            selectinload(MyWache.vehicles).selectinload(MyVehicle.installed_modules),
+        ).filter_by(id=selected_id).first()
+    else:
+        selected = wachen[0] if wachen else None
     return render_template('fleet.html', active_tab='fleet',
                            wachen=wachen, wache_types=wache_types,
                            vehicle_types=vehicle_types, selected=selected,

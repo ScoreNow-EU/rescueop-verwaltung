@@ -2,6 +2,7 @@ import os
 import sqlite3
 import shutil
 from datetime import datetime
+from sqlalchemy.orm import joinedload, selectinload
 
 from flask import Blueprint, render_template, request, redirect, url_for, flash, send_file
 from app import db
@@ -518,15 +519,28 @@ def _import_backup_into_active_savegame(sqlite_path, include_global):
 
 @standards_bp.route('/standards')
 def index():
-    org_types = scoped(NamingOrgType).order_by(NamingOrgType.abbreviation).all()
+    org_types = scoped(NamingOrgType).options(joinedload(NamingOrgType.default_wache_type)).order_by(NamingOrgType.abbreviation).all()
     locations = scoped(NamingLocation).order_by(NamingLocation.abbreviation).all()
-    vehicle_types = scoped(VehicleType).order_by(VehicleType.name).all()
-    wache_types = scoped(WacheType).order_by(WacheType.name).all()
+    vehicle_types = scoped(VehicleType).options(
+        selectinload(VehicleType.modules),
+        selectinload(VehicleType.standard_modules),
+    ).order_by(VehicleType.name).all()
+    wache_types = scoped(WacheType).options(
+        selectinload(WacheType.levels),
+        selectinload(WacheType.upgrades),
+    ).order_by(WacheType.name).all()
     all_modules = scoped(VehicleModule).order_by(VehicleModule.name).all()
     standard_vehicle_items_by_wache = {}
-    for cfg in scoped(WacheStandardVehicleItem).order_by(WacheStandardVehicleItem.id).all():
+    for cfg in scoped(WacheStandardVehicleItem).options(
+        joinedload(WacheStandardVehicleItem.vehicle_type).selectinload(VehicleType.modules),
+        joinedload(WacheStandardVehicleItem.vehicle_type).selectinload(VehicleType.standard_modules),
+        selectinload(WacheStandardVehicleItem.selected_modules),
+    ).order_by(WacheStandardVehicleItem.id).all():
         standard_vehicle_items_by_wache.setdefault(cfg.wache_type_id, []).append(cfg)
-    preview_wachen = scoped(MyWache).order_by(MyWache.name).all()
+    preview_wachen = scoped(MyWache).options(
+        joinedload(MyWache.org_type),
+        joinedload(MyWache.location),
+    ).order_by(MyWache.name).all()
     naming_presets = scoped(NamingPreset).order_by(NamingPreset.is_default.desc(), NamingPreset.name).all()
     if not naming_presets and active_savegame_is_admin():
         for preset in DEFAULT_NAMING_PRESETS:

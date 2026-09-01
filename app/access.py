@@ -1,4 +1,4 @@
-from flask import abort, session
+from flask import abort, g, session
 from flask_login import current_user
 
 
@@ -19,11 +19,17 @@ def get_active_savegame_id():
 def get_admin_savegame_id():
     from app.models import Savegame
 
+    cached = getattr(g, '_admin_savegame_id', None)
+    if cached is not None:
+        return cached
+
     admin_savegame = Savegame.query.filter_by(is_admin=True).order_by(Savegame.id).first()
     if admin_savegame:
+        g._admin_savegame_id = admin_savegame.id
         return admin_savegame.id
     fallback = Savegame.query.order_by(Savegame.id).first()
-    return fallback.id if fallback else None
+    g._admin_savegame_id = fallback.id if fallback else None
+    return g._admin_savegame_id
 
 
 def is_global_catalog_model(model):

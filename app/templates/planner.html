@@ -170,11 +170,16 @@
             <h2 class="accordion-header">
                 <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#doneSectionCollapse" aria-expanded="false">
                     <i class="bi bi-check-circle me-2"></i><strong>Vergangenheit</strong>
-                    <span class="badge bg-success ms-3">{{ done_items|length }} Einträge</span>
+                    <span class="badge bg-success ms-3">{{ done_items_total or done_items|length }} Einträge</span>
                 </button>
             </h2>
             <div id="doneSectionCollapse" class="accordion-collapse collapse">
                 <div class="accordion-body p-0">
+                    {% if (done_items_total or 0) > (done_items|length) %}
+                    <div class="px-3 py-2 small text-muted border-bottom">
+                        Aus Performance-Gründen werden hier die letzten {{ done_items|length }} erledigten Einträge angezeigt.
+                    </div>
+                    {% endif %}
                     <table class="table table-sm mb-0">
                         <thead>
                             <tr><th>Kategorie</th><th>Beschreibung</th><th class="text-end">Kosten</th><th style="width:120px">Aktionen</th></tr>

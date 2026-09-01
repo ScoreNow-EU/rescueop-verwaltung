@@ -9,6 +9,7 @@ from app.models import (VehicleType, VehicleModule, WacheType, WacheLevel,
                         NamingOrgType, NamingLocation, NamingPreset,
                         WacheStandardVehicle, WacheStandardVehicleItem)
 import re
+from sqlalchemy.orm import joinedload, selectinload
 
 planner_bp = Blueprint('planner', __name__)
 
@@ -115,11 +116,35 @@ def _match_wache_type_for_org(org_type, wache_types):
 
 @planner_bp.route('/planner')
 def index():
-    items = scoped(PlanItem).filter_by(done=False).order_by(PlanItem.priority).all()
-    done_items = scoped(PlanItem).filter_by(done=True).order_by(PlanItem.priority).all()
-    vehicle_types = scoped(VehicleType).order_by(VehicleType.is_standard.desc(), VehicleType.name).all()
-    wache_types = scoped(WacheType).order_by(WacheType.name).all()
-    my_wachen = scoped(MyWache).order_by(MyWache.name).all()
+    plan_item_load = [
+        joinedload(PlanItem.wache_type).selectinload(WacheType.levels),
+        joinedload(PlanItem.wache_org_type),
+        joinedload(PlanItem.wache_location),
+        joinedload(PlanItem.created_wache).joinedload(MyWache.wache_type).selectinload(WacheType.levels),
+        joinedload(PlanItem.target_wache).joinedload(MyWache.wache_type).selectinload(WacheType.levels),
+        joinedload(PlanItem.vehicle_wache).joinedload(MyWache.wache_type).selectinload(WacheType.levels),
+        joinedload(PlanItem.extension_wache).joinedload(MyWache.wache_type),
+        joinedload(PlanItem.vehicle_type),
+        joinedload(PlanItem.wache_upgrade),
+        joinedload(PlanItem.target_wache_plan_item).joinedload(PlanItem.wache_type).selectinload(WacheType.levels),
+        joinedload(PlanItem.vehicle_wache_plan_item).joinedload(PlanItem.wache_type).selectinload(WacheType.levels),
+        joinedload(PlanItem.extension_wache_plan_item).joinedload(PlanItem.wache_type),
+        selectinload(PlanItem.selected_modules),
+    ]
+    items = scoped(PlanItem).options(*plan_item_load).filter_by(done=False).order_by(PlanItem.priority).all()
+    done_items_total = scoped(PlanItem).filter_by(done=True).count()
+    done_items = list(reversed(
+        scoped(PlanItem).options(*plan_item_load).filter_by(done=True).order_by(PlanItem.priority.desc()).limit(50).all()
+    ))
+    vehicle_types = scoped(VehicleType).options(selectinload(VehicleType.standard_modules)).order_by(VehicleType.is_standard.desc(), VehicleType.name).all()
+    wache_types = scoped(WacheType).options(selectinload(WacheType.levels), selectinload(WacheType.upgrades)).order_by(WacheType.name).all()
+    my_wachen = scoped(MyWache).options(
+        joinedload(MyWache.wache_type).selectinload(WacheType.levels),
+        joinedload(MyWache.org_type),
+        joinedload(MyWache.location),
+        selectinload(MyWache.vehicles),
+        selectinload(MyWache.installed_upgrades),
+    ).order_by(MyWache.name).all()
     planner_wachen = [_make_real_wache_entry(w) for w in my_wachen]
     planner_wachen.extend(
         _make_planned_wache_entry(item)
@@ -335,6 +360,7 @@ def index():
 
     return render_template('planner.html', active_tab='planner',
                            items=items, done_items=done_items, running=running,
+                           done_items_total=done_items_total,
                            sections=sections,
                            vehicle_types=vehicle_types, wache_types=wache_types,
                            my_wachen=my_wachen, planner_wachen=planner_wachen,
