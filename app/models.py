@@ -124,6 +124,10 @@ class WacheLevel(db.Model):
     maintenance_cost = db.Column(db.Float, nullable=False, default=0)
     max_vehicles = db.Column(db.Integer, nullable=False, default=0)
 
+    __table_args__ = (
+        db.Index('ix_wache_level_wache_type_level', 'wache_type_id', 'level_number'),
+    )
+
 
 class WacheUpgrade(db.Model):
     """Catalog: purchasable upgrades for a wache type (e.g. Anbau, extra bay)."""
@@ -139,6 +143,10 @@ class WacheUpgrade(db.Model):
     wache_type = db.relationship('WacheType', backref=db.backref(
         'upgrades', lazy=True, cascade='all, delete-orphan',
         order_by='WacheUpgrade.name'))
+
+    __table_args__ = (
+        db.Index('ix_wache_upgrade_wache_type_id', 'wache_type_id'),
+    )
 
 
 class WacheStandardVehicle(db.Model):
@@ -258,6 +266,11 @@ class MyWache(db.Model):
     org_type = db.relationship('NamingOrgType', foreign_keys=[naming_org_type_id])
     location = db.relationship('NamingLocation', foreign_keys=[naming_location_id])
 
+    __table_args__ = (
+        db.Index('ix_my_wache_savegame_name', 'savegame_id', 'name'),
+        db.Index('ix_my_wache_wache_type_id', 'wache_type_id'),
+    )
+
     @property
     def effective_max_vehicles(self):
         """Max vehicles from current level + bonus from installed upgrades."""
@@ -298,6 +311,11 @@ class MyVehicle(db.Model):
     nickname = db.Column(db.String(120), nullable=True)
 
     installed_modules = db.relationship('VehicleModule', secondary=my_vehicle_modules, lazy=True)
+
+    __table_args__ = (
+        db.Index('ix_my_vehicle_wache_type', 'my_wache_id', 'vehicle_type_id'),
+        db.Index('ix_my_vehicle_type_id', 'vehicle_type_id'),
+    )
 
     @property
     def maintenance_cost(self):
@@ -363,6 +381,14 @@ class PlanItem(db.Model):
     wache_upgrade = db.relationship('WacheUpgrade', foreign_keys=[wache_upgrade_id])
     extension_wache = db.relationship('MyWache', foreign_keys=[extension_wache_id])
     extension_wache_plan_item = db.relationship('PlanItem', remote_side=[id], foreign_keys=[extension_wache_plan_item_id])
+
+    __table_args__ = (
+        db.Index('ix_plan_item_savegame_done_priority', 'savegame_id', 'done', 'priority'),
+        db.Index('ix_plan_item_target_wache_id', 'target_wache_id'),
+        db.Index('ix_plan_item_vehicle_wache_id', 'vehicle_wache_id'),
+        db.Index('ix_plan_item_extension_wache_id', 'extension_wache_id'),
+        db.Index('ix_plan_item_vehicle_type_id', 'vehicle_type_id'),
+    )
 
     def _planned_wache_item(self, plan_item_id):
         if not plan_item_id:

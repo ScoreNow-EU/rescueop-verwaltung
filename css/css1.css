@@ -1,0 +1,91 @@
+@keyframes blob {
+    0% {
+        transform: translate(0) scale(1)
+    }
+
+    33% {
+        transform: translate(30px,-50px) scale(1.1)
+    }
+
+    66% {
+        transform: translate(-20px,20px) scale(.9)
+    }
+
+    to {
+        transform: translate(0) scale(1)
+    }
+}
+
+.animate-blob {
+    animation: blob 7s infinite
+}
+
+.animation-delay-2000 {
+    animation-delay: 2s
+}
+
+.animation-delay-4000 {
+    animation-delay: 4s
+}
+
+.mask-gradient {
+    mask-image: linear-gradient(180deg,transparent,black 10%,black 90%,transparent)
+}
+
+.bg-grid-slate-200\/50 {
+    background-image: linear-gradient(90deg,rgb(226 232 240/.5) 1px,transparent 0),linear-gradient(180deg,rgb(226 232 240/.5) 1px,transparent 0);
+    background-size: 24px 24px
+}
+
+@keyframes emergency-light-pulse {
+    0%,to {
+        opacity: .15
+    }
+
+    50% {
+        opacity: .35
+    }
+}
+
+.emergency-light-left {
+    background: linear-gradient(90deg,rgba(59,130,246,.25),rgba(59,130,246,.15) 30%,rgba(59,130,246,.08) 60%,transparent)
+}
+
+.emergency-light-left,.emergency-light-right {
+    animation: emergency-light-pulse 3s ease-in-out infinite
+}
+
+.emergency-light-right {
+    background: linear-gradient(270deg,rgba(59,130,246,.25),rgba(59,130,246,.15) 30%,rgba(59,130,246,.08) 60%,transparent);
+    animation-delay: 1.5s
+}
+
+@keyframes snowfall {
+    0% {
+        transform: translateY(-100vh) translateX(0);
+        opacity: 0
+    }
+
+    10% {
+        opacity: 1
+    }
+
+    90% {
+        opacity: 1
+    }
+
+    to {
+        transform: translateY(100vh) translateX(20px);
+        opacity: 0
+    }
+}
+
+.snowflake {
+    position: absolute;
+    top: -10px;
+    background: white;
+    border-radius: 50%;
+    opacity: .9;
+    box-shadow: 0 0 8px rgba(255,255,255,.7);
+    animation: snowfall linear infinite
+}

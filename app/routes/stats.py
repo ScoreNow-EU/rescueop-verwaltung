@@ -1,14 +1,22 @@
 from flask import Blueprint, render_template
+from sqlalchemy.orm import joinedload, selectinload
+
 from app.access import scoped
-from app.models import MyWache, MyVehicle
+from app.models import MyWache, MyVehicle, WacheType
 
 stats_bp = Blueprint('stats', __name__)
 
 
 @stats_bp.route('/stats')
 def index():
-    wachen = scoped(MyWache).order_by(MyWache.name).all()
-    vehicles = scoped(MyVehicle).all()
+    wachen = scoped(MyWache).options(
+        joinedload(MyWache.wache_type).selectinload(WacheType.levels),
+        selectinload(MyWache.installed_upgrades),
+    ).order_by(MyWache.name).all()
+    vehicles = scoped(MyVehicle).options(
+        joinedload(MyVehicle.vehicle_type),
+        selectinload(MyVehicle.installed_modules),
+    ).all()
 
     # ---------- Wachen-Wert ----------
     wachen_details = []

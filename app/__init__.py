@@ -4,7 +4,8 @@ import sqlite3
 from flask import Flask, flash, redirect, request, session, url_for
 from flask_login import LoginManager, current_user
 from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy import event
+from sqlalchemy import and_, event
+from sqlalchemy.orm import selectinload
 
 
 db = SQLAlchemy()
@@ -141,15 +142,59 @@ def create_app():
             }
 
         from app.access import get_active_savegame_id
-        from app.models import MyWache, MyVehicle, Savegame
+        from app.models import MyVehicle, MyWache, Savegame, SavegameMembership, VehicleType, WacheLevel, WacheUpgrade, my_wache_upgrades
 
         sgid = get_active_savegame_id()
-        current_savegame = Savegame.query.get(sgid) if sgid else None
-        wachen = MyWache.query.filter_by(savegame_id=sgid).all() if sgid else []
-        vehicles = MyVehicle.query.filter_by(savegame_id=sgid).all() if sgid else []
-        total_wachen_maintenance = sum((w.maintenance_cost or 0) for w in wachen)
-        total_vehicle_maintenance = sum((v.maintenance_cost or 0) for v in vehicles)
-        savegames = [m.savegame for m in current_user.memberships if m.savegame]
+        current_savegame = (
+            Savegame.query.options(
+                selectinload(Savegame.memberships).selectinload(SavegameMembership.user)
+            ).filter_by(id=sgid).first()
+            if sgid else None
+        )
+
+        total_vehicle_maintenance = 0.0
+        total_wachen_maintenance = 0.0
+        if sgid:
+            total_vehicle_maintenance = db.session.query(
+                db.func.coalesce(db.func.sum(VehicleType.maintenance_cost), 0.0)
+            ).select_from(MyVehicle).join(
+                VehicleType, VehicleType.id == MyVehicle.vehicle_type_id
+            ).filter(
+                MyVehicle.savegame_id == sgid
+            ).scalar() or 0.0
+
+            total_wache_level_maintenance = db.session.query(
+                db.func.coalesce(db.func.sum(WacheLevel.maintenance_cost), 0.0)
+            ).select_from(MyWache).join(
+                WacheLevel,
+                and_(
+                    WacheLevel.wache_type_id == MyWache.wache_type_id,
+                    WacheLevel.level_number == MyWache.current_level,
+                )
+            ).filter(
+                MyWache.savegame_id == sgid
+            ).scalar() or 0.0
+
+            total_wache_upgrade_maintenance = db.session.query(
+                db.func.coalesce(db.func.sum(WacheUpgrade.maintenance_cost), 0.0)
+            ).select_from(MyWache).join(
+                my_wache_upgrades,
+                my_wache_upgrades.c.my_wache_id == MyWache.id,
+            ).join(
+                WacheUpgrade,
+                WacheUpgrade.id == my_wache_upgrades.c.wache_upgrade_id,
+            ).filter(
+                MyWache.savegame_id == sgid
+            ).scalar() or 0.0
+
+            total_wachen_maintenance = total_wache_level_maintenance + total_wache_upgrade_maintenance
+
+        savegames = Savegame.query.join(
+            SavegameMembership,
+            SavegameMembership.savegame_id == Savegame.id,
+        ).filter(
+            SavegameMembership.user_id == current_user.id
+        ).order_by(Savegame.name).all()
         membership = _active_membership()
         savegame_members = []
         if current_savegame:
@@ -203,6 +248,7 @@ def create_app():
         _migrate_wache_initial_levels_if_needed(db)
         _migrate_auth_and_savegames_if_needed(db)
         _migrate_admin_savegame_flag_if_needed(db)
+        _migrate_indexes_if_needed(db)
         _bootstrap_auth_defaults()
 
     return app
@@ -683,3 +729,26 @@ def _migrate_admin_savegame_flag_if_needed(database):
             conn.execute(sqlalchemy.text(
                 'ALTER TABLE savegame ADD COLUMN is_admin BOOLEAN NOT NULL DEFAULT FALSE'
             ))
+
+
+def _migrate_indexes_if_needed(database):
+    import sqlalchemy
+
+    engine = database.engine
+    index_statements = [
+        'CREATE INDEX IF NOT EXISTS ix_wache_level_wache_type_level ON wache_level (wache_type_id, level_number)',
+        'CREATE INDEX IF NOT EXISTS ix_wache_upgrade_wache_type_id ON wache_upgrade (wache_type_id)',
+        'CREATE INDEX IF NOT EXISTS ix_my_wache_savegame_name ON my_wache (savegame_id, name)',
+        'CREATE INDEX IF NOT EXISTS ix_my_wache_wache_type_id ON my_wache (wache_type_id)',
+        'CREATE INDEX IF NOT EXISTS ix_my_vehicle_wache_type ON my_vehicle (my_wache_id, vehicle_type_id)',
+        'CREATE INDEX IF NOT EXISTS ix_my_vehicle_type_id ON my_vehicle (vehicle_type_id)',
+        'CREATE INDEX IF NOT EXISTS ix_plan_item_savegame_done_priority ON plan_item (savegame_id, done, priority)',
+        'CREATE INDEX IF NOT EXISTS ix_plan_item_target_wache_id ON plan_item (target_wache_id)',
+        'CREATE INDEX IF NOT EXISTS ix_plan_item_vehicle_wache_id ON plan_item (vehicle_wache_id)',
+        'CREATE INDEX IF NOT EXISTS ix_plan_item_extension_wache_id ON plan_item (extension_wache_id)',
+        'CREATE INDEX IF NOT EXISTS ix_plan_item_vehicle_type_id ON plan_item (vehicle_type_id)',
+    ]
+
+    with engine.begin() as conn:
+        for statement in index_statements:
+            conn.execute(sqlalchemy.text(statement))
