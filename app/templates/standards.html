@@ -682,6 +682,9 @@
                             <option value="10000">Level 2 – 10.000 m</option>
                             <option value="15000">Level 3 – 15.000 m</option>
                             <option value="20000">Level 4 – 20.000 m</option>
+                            <option value="25000">Level 5 – 25.000 m</option>
+                            <option value="30000">Level 6 – 30.000 m</option>
+                            <option value="35000">Level 7 – 35.000 m</option>
                         </select>
                     </div>
                     <div class="col-md-3 d-flex align-items-end">
@@ -707,7 +710,7 @@
                 </button>
             </div>
         </div>
-        <div id="osmMap" class="rounded border mb-3" style="height: 420px;"></div>
+        <div id="osmMap" class="rounded border mb-3" style="height: 1000px;"></div>
         <div id="osmResults">
             <p class="text-muted mb-0">Noch keine Suche ausgeführt.</p>
         </div>
@@ -1282,9 +1285,14 @@ function ensureOsmMap() {
             sources: {
                 osm: {
                     type: 'raster',
-                    tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+                    tiles: [
+                        'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
+                        'https://b.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
+                        'https://c.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
+                        'https://d.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png'
+                    ],
                     tileSize: 256,
-                    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors'
+                    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions" target="_blank" rel="noopener">CARTO</a>'
                 }
             },
             layers: [{id: 'osm-tiles', type: 'raster', source: 'osm'}]
@@ -1329,11 +1337,13 @@ function renderOsmMap(data) {
             var el = document.createElement('div');
             el.style.cssText = 'width:32px;height:32px;border-radius:10px;background:' + style.color +
                 ';display:flex;align-items:center;justify-content:center;color:#fff;' +
-                'box-shadow:0 1px 4px rgba(0,0,0,.35);cursor:pointer;font-size:14px;';
+                'border:2px solid rgba(255,255,255,.85);box-shadow:0 1px 6px rgba(0,0,0,.6);' +
+                'cursor:pointer;font-size:14px;';
             el.innerHTML = '<i class="bi ' + style.icon + '"></i>';
 
             var popupHtml = '<strong>' + osmEscapeHtml(s.name || '(ohne Namen)') + '</strong><br>' +
-                '<span class="text-muted">' + osmEscapeHtml(s.type_label || '') + '</span>';
+                '<span class="text-muted">' + osmEscapeHtml(s.type_label || '') + '</span><br>' +
+                '<span class="text-muted small">OSM-ID: ' + osmEscapeHtml(s.osm_type || '') + '/' + osmEscapeHtml(s.osm_id) + '</span>';
 
             var marker = new maplibregl.Marker({element: el})
                 .setLngLat([s.lon, s.lat])
