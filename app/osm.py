@@ -6,12 +6,50 @@ EMS stations, police stations, etc. within a radius around a coordinate.
 Data source: OpenStreetMap contributors, licensed under the Open Database
 License (ODbL). Attribution is required wherever this data is shown.
 """
+import http.client
 import json
+import socket
 import urllib.error
 import urllib.parse
 import urllib.request
 
 OVERPASS_URL = 'https://overpass-api.de/api/interpreter'
+
+
+class _IPv4HTTPSConnection(http.client.HTTPSConnection):
+    """HTTPSConnection that only ever resolves/connects via IPv4.
+
+    Many VPS providers hand out a host with broken or unrouted IPv6. If a
+    domain's DNS also has an AAAA record, Python may pick the IPv6 address
+    first and fail with "Network is unreachable" even though IPv4 works
+    fine. Forcing AF_INET here sidesteps that without touching global
+    socket/DNS behaviour (safe under threaded workers).
+    """
+
+    def connect(self):
+        last_error = None
+        for family, socktype, proto, _canonname, sockaddr in socket.getaddrinfo(
+            self.host, self.port, socket.AF_INET, socket.SOCK_STREAM
+        ):
+            sock = socket.socket(family, socktype, proto)
+            try:
+                sock.settimeout(self.timeout)
+                sock.connect(sockaddr)
+            except OSError as exc:
+                last_error = exc
+                sock.close()
+                continue
+            self.sock = self._context.wrap_socket(sock, server_hostname=self.host)
+            return
+        raise last_error or OSError(f'Keine IPv4-Adresse für {self.host} gefunden.')
+
+
+class _IPv4HTTPSHandler(urllib.request.HTTPSHandler):
+    def https_open(self, req):
+        return self.do_open(_IPv4HTTPSConnection, req)
+
+
+_ipv4_opener = urllib.request.build_opener(_IPv4HTTPSHandler())
 
 # Ordered list of rescue-operator-relevant OSM station types.
 STATION_TYPES = [
@@ -58,9 +96,9 @@ def query_overpass(query, timeout=40):
         headers={'User-Agent': 'RescueOperator-Verwaltung/1.0 (Test-Tool)'},
     )
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as response:
+        with _ipv4_opener.open(req, timeout=timeout) as response:
             payload = response.read().decode('utf-8')
-    except urllib.error.URLError as exc:
+    except (urllib.error.URLError, OSError) as exc:
         raise OverpassError(f'Overpass-API nicht erreichbar: {exc}') from exc
     try:
         return json.loads(payload)

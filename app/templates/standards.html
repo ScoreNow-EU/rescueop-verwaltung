@@ -669,20 +669,19 @@
                 <div class="row g-2 mb-2">
                     <div class="col-md-3">
                         <label class="form-label small mb-1">Latitude</label>
-                        <input type="number" step="any" class="form-control form-control-sm" id="osmLat" value="52.3759">
+                        <input type="number" step="any" class="form-control form-control-sm" id="osmLat" value="52.374513">
                     </div>
                     <div class="col-md-3">
                         <label class="form-label small mb-1">Longitude</label>
-                        <input type="number" step="any" class="form-control form-control-sm" id="osmLon" value="9.7320">
+                        <input type="number" step="any" class="form-control form-control-sm" id="osmLon" value="9.738660">
                     </div>
                     <div class="col-md-3">
                         <label class="form-label small mb-1">Umkreis</label>
                         <select class="form-select form-select-sm" id="osmRadius">
-                            <option value="1000">Level 1 – 1.000 m</option>
-                            <option value="5000" selected>Level 2 – 5.000 m</option>
-                            <option value="10000">Level 3 – 10.000 m</option>
+                            <option value="5000" selected>Level 1 – 5.000 m</option>
+                            <option value="10000">Level 2 – 10.000 m</option>
+                            <option value="15000">Level 3 – 15.000 m</option>
                             <option value="20000">Level 4 – 20.000 m</option>
-                            <option value="50000">Level 5 – 50.000 m</option>
                         </select>
                     </div>
                     <div class="col-md-3 d-flex align-items-end">
@@ -1279,8 +1278,8 @@ function initOsmTest() {
     if (presetBtn && presetBtn.dataset.bound !== '1') {
         presetBtn.dataset.bound = '1';
         presetBtn.addEventListener('click', function() {
-            document.getElementById('osmLat').value = '52.3759';
-            document.getElementById('osmLon').value = '9.7320';
+            document.getElementById('osmLat').value = '52.374513';
+            document.getElementById('osmLon').value = '9.738660';
         });
     }
 }
