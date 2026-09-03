@@ -707,6 +707,7 @@
                 </button>
             </div>
         </div>
+        <div id="osmMap" class="rounded border mb-3" style="height: 420px;"></div>
         <div id="osmResults">
             <p class="text-muted mb-0">Noch keine Suche ausgeführt.</p>
         </div>
@@ -913,6 +914,10 @@
 {% endblock %}
 
 {% block scripts %}
+{% if current_savegame_is_admin %}
+<link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet">
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+{% endif %}
 <script>
 function initStandardsPreview() {
     var prevWache = document.getElementById('prev_wache');
@@ -1235,6 +1240,122 @@ function initStandardsVehicleRows() {
     });
 }
 
+var osmMap = null;
+var osmMarkers = [];
+
+var OSM_STATION_STYLE = {
+    fire: {icon: 'bi-fire', color: '#e35d6a'},
+    ems: {icon: 'bi-heart-pulse-fill', color: '#20c997'},
+    police: {icon: 'bi-shield-lock-fill', color: '#0d6efd'},
+    disaster: {icon: 'bi-exclamation-triangle-fill', color: '#fd7e14'},
+    rescue: {icon: 'bi-life-preserver', color: '#6f42c1'},
+    water: {icon: 'bi-water', color: '#0dcaf0'},
+    mountain: {icon: 'bi-triangle-fill', color: '#795548'},
+    other: {icon: 'bi-geo-alt-fill', color: '#6c757d'}
+};
+
+function osmEscapeHtml(str) {
+    var div = document.createElement('div');
+    div.textContent = str == null ? '' : String(str);
+    return div.innerHTML;
+}
+
+function ensureOsmMap() {
+    if (typeof maplibregl === 'undefined') {
+        return null;
+    }
+    if (osmMap && (!osmMap.getContainer || !document.body.contains(osmMap.getContainer()))) {
+        osmMap = null;
+        osmMarkers = [];
+    }
+    if (osmMap) {
+        return osmMap;
+    }
+    var mapEl = document.getElementById('osmMap');
+    if (!mapEl) {
+        return null;
+    }
+    osmMap = new maplibregl.Map({
+        container: 'osmMap',
+        style: {
+            version: 8,
+            sources: {
+                osm: {
+                    type: 'raster',
+                    tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+                    tileSize: 256,
+                    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors'
+                }
+            },
+            layers: [{id: 'osm-tiles', type: 'raster', source: 'osm'}]
+        },
+        center: [9.738660, 52.374513],
+        zoom: 11
+    });
+    osmMap.addControl(new maplibregl.NavigationControl(), 'top-right');
+    return osmMap;
+}
+
+function clearOsmMarkers() {
+    osmMarkers.forEach(function(m) { m.remove(); });
+    osmMarkers = [];
+}
+
+function renderOsmMap(data) {
+    var map = ensureOsmMap();
+    if (!map || !data) {
+        return;
+    }
+
+    function draw() {
+        clearOsmMarkers();
+        var bounds = new maplibregl.LngLatBounds();
+
+        var centerEl = document.createElement('div');
+        centerEl.style.cssText = 'width:14px;height:14px;border-radius:50%;background:#212529;' +
+            'border:2px solid #fff;box-shadow:0 0 0 2px #212529;';
+        var centerMarker = new maplibregl.Marker({element: centerEl})
+            .setLngLat([data.lon, data.lat])
+            .setPopup(new maplibregl.Popup({offset: 12}).setText('Suchmittelpunkt'))
+            .addTo(map);
+        osmMarkers.push(centerMarker);
+        bounds.extend([data.lon, data.lat]);
+
+        (data.stations || []).forEach(function(s) {
+            if (s.lat == null || s.lon == null) {
+                return;
+            }
+            var style = OSM_STATION_STYLE[s.type_key] || OSM_STATION_STYLE.other;
+            var el = document.createElement('div');
+            el.style.cssText = 'width:32px;height:32px;border-radius:10px;background:' + style.color +
+                ';display:flex;align-items:center;justify-content:center;color:#fff;' +
+                'box-shadow:0 1px 4px rgba(0,0,0,.35);cursor:pointer;font-size:14px;';
+            el.innerHTML = '<i class="bi ' + style.icon + '"></i>';
+
+            var popupHtml = '<strong>' + osmEscapeHtml(s.name || '(ohne Namen)') + '</strong><br>' +
+                '<span class="text-muted">' + osmEscapeHtml(s.type_label || '') + '</span>';
+
+            var marker = new maplibregl.Marker({element: el})
+                .setLngLat([s.lon, s.lat])
+                .setPopup(new maplibregl.Popup({offset: 18}).setHTML(popupHtml))
+                .addTo(map);
+            osmMarkers.push(marker);
+            bounds.extend([s.lon, s.lat]);
+        });
+
+        map.resize();
+        if (!bounds.isEmpty()) {
+            map.fitBounds(bounds, {padding: 50, maxZoom: 15, duration: 300});
+        }
+    }
+
+    if (map.loaded()) {
+        draw();
+    } else {
+        map.once('load', draw);
+    }
+}
+
 function initOsmTest() {
     var searchBtn = document.getElementById('osmSearchBtn');
     if (searchBtn && searchBtn.dataset.bound !== '1') {
@@ -1264,7 +1385,15 @@ function initOsmTest() {
                 headers: {'X-Requested-With': 'XMLHttpRequest'}
             })
                 .then(function(response) { return response.text(); })
-                .then(function(html) { resultsEl.innerHTML = html; })
+                .then(function(html) {
+                    resultsEl.innerHTML = html;
+                    var dataEl = document.getElementById('osmResultsData');
+                    if (dataEl) {
+                        try {
+                            renderOsmMap(JSON.parse(dataEl.textContent));
+                        } catch (e) { /* ignore malformed data */ }
+                    }
+                })
                 .catch(function() {
                     resultsEl.innerHTML = '<div class="alert alert-danger mb-0">Anfrage fehlgeschlagen.</div>';
                 })
@@ -1280,6 +1409,17 @@ function initOsmTest() {
         presetBtn.addEventListener('click', function() {
             document.getElementById('osmLat').value = '52.374513';
             document.getElementById('osmLon').value = '9.738660';
+        });
+    }
+
+    var osmTabBtn = document.getElementById('osmtest-tab');
+    if (osmTabBtn && osmTabBtn.dataset.mapBound !== '1') {
+        osmTabBtn.dataset.mapBound = '1';
+        osmTabBtn.addEventListener('shown.bs.tab', function() {
+            var map = ensureOsmMap();
+            if (map) {
+                setTimeout(function() { map.resize(); }, 50);
+            }
         });
     }
 }

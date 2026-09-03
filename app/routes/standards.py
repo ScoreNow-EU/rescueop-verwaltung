@@ -15,7 +15,7 @@ from app.access import (
     scoped,
     scoped_get_or_404,
 )
-from app.osm import STATION_TYPES, OverpassError, search_stations
+from app.osm import STATION_TYPES, OSM_TYPE_COLORS, OverpassError, search_stations
 from app.models import (
     NamingLocation,
     NamingOrgType,
@@ -593,7 +593,7 @@ def osm_search():
         return render_template('standards_osm_results.html', error=str(exc), stations=None)
 
     return render_template('standards_osm_results.html', error=None, stations=stations,
-                           lat=lat, lon=lon, radius=radius)
+                           lat=lat, lon=lon, radius=radius, OSM_TYPE_COLORS=OSM_TYPE_COLORS)
 
 
 @standards_bp.route('/standards/presets/add', methods=['POST'])

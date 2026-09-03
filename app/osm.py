@@ -62,16 +62,18 @@ _ipv4_opener = urllib.request.build_opener(_IPv4HTTPSHandler())
 
 # Ordered list of rescue-operator-relevant OSM station types.
 STATION_TYPES = [
-    {'key': 'fire', 'label': 'Feuerwehr', 'tag_key': 'amenity', 'tag_value': 'fire_station'},
-    {'key': 'ems', 'label': 'Rettungswache', 'tag_key': 'emergency', 'tag_value': 'ambulance_station'},
-    {'key': 'police', 'label': 'Polizei', 'tag_key': 'amenity', 'tag_value': 'police'},
-    {'key': 'disaster', 'label': 'THW / Katastrophenschutz', 'tag_key': 'emergency', 'tag_value': 'disaster_response'},
-    {'key': 'rescue', 'label': 'Sonstige Rettungsstation', 'tag_key': 'amenity', 'tag_value': 'rescue_station'},
-    {'key': 'water', 'label': 'Wasserrettung / DLRG', 'tag_key': 'emergency', 'tag_value': 'water_rescue'},
-    {'key': 'mountain', 'label': 'Bergrettung', 'tag_key': 'emergency', 'tag_value': 'mountain_rescue'},
+    {'key': 'fire', 'label': 'Feuerwehr', 'tag_key': 'amenity', 'tag_value': 'fire_station', 'color': '#e35d6a'},
+    {'key': 'ems', 'label': 'Rettungswache', 'tag_key': 'emergency', 'tag_value': 'ambulance_station', 'color': '#20c997'},
+    {'key': 'police', 'label': 'Polizei', 'tag_key': 'amenity', 'tag_value': 'police', 'color': '#0d6efd'},
+    {'key': 'disaster', 'label': 'THW / Katastrophenschutz', 'tag_key': 'emergency', 'tag_value': 'disaster_response', 'color': '#fd7e14'},
+    {'key': 'rescue', 'label': 'Sonstige Rettungsstation', 'tag_key': 'amenity', 'tag_value': 'rescue_station', 'color': '#6f42c1'},
+    {'key': 'water', 'label': 'Wasserrettung / DLRG', 'tag_key': 'emergency', 'tag_value': 'water_rescue', 'color': '#0dcaf0'},
+    {'key': 'mountain', 'label': 'Bergrettung', 'tag_key': 'emergency', 'tag_value': 'mountain_rescue', 'color': '#795548'},
 ]
 
 _STATION_TYPES_BY_KEY = {t['key']: t for t in STATION_TYPES}
+OSM_TYPE_COLORS = {t['key']: t['color'] for t in STATION_TYPES}
+
 
 
 class OverpassError(Exception):
