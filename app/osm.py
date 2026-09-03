@@ -15,6 +15,15 @@ import urllib.request
 
 OVERPASS_URL = 'https://overpass-api.de/api/interpreter'
 
+# Public Overpass instances tried in order. The main instance enforces a fair-use
+# rate limit and occasionally refuses connections when busy; falling back to
+# mirrors makes lookups resilient to that without needing an API key.
+OVERPASS_URLS = [
+    OVERPASS_URL,
+    'https://overpass.kumi.systems/api/interpreter',
+    'https://overpass.private.coffee/api/interpreter',
+]
+
 
 class _IPv4HTTPSConnection(http.client.HTTPSConnection):
     """HTTPSConnection that only ever resolves/connects via IPv4.
@@ -90,16 +99,22 @@ def build_overpass_query(lat, lon, radius_m, type_keys=None):
 
 def query_overpass(query, timeout=40):
     data = urllib.parse.urlencode({'data': query}).encode('utf-8')
-    req = urllib.request.Request(
-        OVERPASS_URL,
-        data=data,
-        headers={'User-Agent': 'RescueOperator-Verwaltung/1.0 (Test-Tool)'},
-    )
-    try:
-        with _ipv4_opener.open(req, timeout=timeout) as response:
-            payload = response.read().decode('utf-8')
-    except (urllib.error.URLError, OSError) as exc:
-        raise OverpassError(f'Overpass-API nicht erreichbar: {exc}') from exc
+    last_error = None
+    for url in OVERPASS_URLS:
+        req = urllib.request.Request(
+            url,
+            data=data,
+            headers={'User-Agent': 'RescueOperator-Verwaltung/1.0 (Test-Tool)'},
+        )
+        try:
+            with _ipv4_opener.open(req, timeout=timeout) as response:
+                payload = response.read().decode('utf-8')
+            break
+        except (urllib.error.URLError, OSError) as exc:
+            last_error = exc
+            continue
+    else:
+        raise OverpassError(f'Overpass-API nicht erreichbar: {last_error}')
     try:
         return json.loads(payload)
     except (ValueError, TypeError) as exc:
