@@ -285,6 +285,22 @@ def _next_priority(done_state=None):
     return query.with_entities(db.func.max(PlanItem.priority)).scalar() or 0
 
 
+def _maybe_create_divider(label):
+    """Optionally create a new divider section at the end of the planner list.
+
+    Used so entries added via the 'Wache (aus)bauen' modal can start their own
+    named category/section instead of always appending to the last one.
+    """
+    label = (label or '').strip()
+    if not label:
+        return
+    max_prio = _next_priority()
+    divider = PlanItem(category='divider', priority=max_prio + 1, notes=label)
+    assign_active_savegame(divider)
+    db.session.add(divider)
+    db.session.flush()
+
+
 def _parse_wache_ref(ref):
     if not ref:
         return None, None
@@ -447,6 +463,7 @@ def add_wache_buy():
         flash('Wachen-Typ konnte nicht gefunden werden.', 'danger')
         return redirect(url_for('planner.index'))
 
+    _maybe_create_divider(request.form.get('new_divider_label'))
 
     max_prio = _next_priority()
     item = PlanItem(
@@ -617,6 +634,8 @@ def add_wache_upgrade():
         flash('Wache konnte nicht gefunden werden.', 'danger')
         return redirect(url_for('planner.index'))
 
+    _maybe_create_divider(request.form.get('new_divider_label'))
+
     max_prio = _next_priority()
     item = PlanItem(
         category='wache_upgrade',
@@ -659,6 +678,8 @@ def add_wache_extension():
     if not extension_wache and not extension_plan_item:
         flash('Wache konnte nicht gefunden werden.', 'danger')
         return redirect(url_for('planner.index'))
+
+    _maybe_create_divider(request.form.get('new_divider_label'))
 
     max_prio = _next_priority()
     item = PlanItem(
