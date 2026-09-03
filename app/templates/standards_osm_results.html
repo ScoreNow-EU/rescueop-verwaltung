@@ -1,0 +1,51 @@
+{% if error %}
+<div class="alert alert-danger mb-0">{{ error }}</div>
+{% elif stations is none %}
+<p class="text-muted mb-0">Noch keine Suche ausgeführt.</p>
+{% else %}
+<div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-1">
+    <strong>{{ stations|length }} Treffer</strong>
+    <span class="text-muted small">
+        Radius {{ radius }} m um {{ '%.5f'|format(lat) }}, {{ '%.5f'|format(lon) }} ·
+        Quelle: <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> (ODbL)
+    </span>
+</div>
+{% if stations %}
+<div class="table-responsive">
+    <table class="table table-sm table-hover align-middle mb-0">
+        <thead>
+            <tr>
+                <th>Typ</th>
+                <th>Name</th>
+                <th>Betreiber</th>
+                <th>Adresse</th>
+                <th>Koordinaten</th>
+                <th>Kontakt</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for s in stations %}
+            <tr>
+                <td><span class="badge bg-secondary">{{ s.type_label }}</span></td>
+                <td>{{ s.name }}</td>
+                <td>{{ s.operator or '—' }}</td>
+                <td>{{ s.address or '—' }}</td>
+                <td class="text-nowrap small">
+                    {% if s.lat and s.lon %}
+                    <a href="https://www.openstreetmap.org/{{ s.osm_type }}/{{ s.osm_id }}" target="_blank" rel="noopener">{{ '%.5f'|format(s.lat) }}, {{ '%.5f'|format(s.lon) }}</a>
+                    {% else %}—{% endif %}
+                </td>
+                <td class="small">
+                    {% if s.phone %}<div>{{ s.phone }}</div>{% endif %}
+                    {% if s.website %}<div><a href="{{ s.website }}" target="_blank" rel="noopener">Website</a></div>{% endif %}
+                    {% if not s.phone and not s.website %}—{% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<p class="text-muted mb-0">Keine Wachen im gewählten Umkreis gefunden.</p>
+{% endif %}
+{% endif %}

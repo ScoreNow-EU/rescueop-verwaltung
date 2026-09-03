@@ -33,6 +33,14 @@
             <i class="bi bi-truck me-1"></i>Standard-Fahrzeuge
         </button>
     </li>
+    {% if current_savegame_is_admin %}
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="osmtest-tab" data-bs-toggle="tab" data-bs-target="#osmtest"
+                type="button" role="tab">
+            <i class="bi bi-geo-alt me-1"></i>OSM-Test
+        </button>
+    </li>
+    {% endif %}
 </ul>
 
 <div class="tab-content" id="standardsTabContent">
@@ -643,6 +651,69 @@
         {% endif %}
     </div><!-- /stdveh tab -->
 
+    {% if current_savegame_is_admin %}
+    <!-- ===== TAB: OSM-Test ===== -->
+    <div class="tab-pane fade" id="osmtest" role="tabpanel">
+        <div class="card mb-3">
+            <div class="card-header">
+                <i class="bi bi-geo-alt me-1"></i>Wachen aus OpenStreetMap laden (Test)
+            </div>
+            <div class="card-body">
+                <p class="text-muted small">
+                    Test-Werkzeug: fragt live die öffentliche Overpass-API ab und zeigt Feuerwehr-, Rettungs-,
+                    Polizei- und weitere Rettungsdienst-Einrichtungen aus OpenStreetMap in einem Umkreis um einen
+                    Punkt an. Es wird hier noch nichts gespeichert. Quelle:
+                    <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>
+                    (Open Database License, Namensnennung erforderlich).
+                </p>
+                <div class="row g-2 mb-2">
+                    <div class="col-md-3">
+                        <label class="form-label small mb-1">Latitude</label>
+                        <input type="number" step="any" class="form-control form-control-sm" id="osmLat" value="52.3759">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label small mb-1">Longitude</label>
+                        <input type="number" step="any" class="form-control form-control-sm" id="osmLon" value="9.7320">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label small mb-1">Umkreis</label>
+                        <select class="form-select form-select-sm" id="osmRadius">
+                            <option value="1000">Level 1 – 1.000 m</option>
+                            <option value="5000" selected>Level 2 – 5.000 m</option>
+                            <option value="10000">Level 3 – 10.000 m</option>
+                            <option value="20000">Level 4 – 20.000 m</option>
+                            <option value="50000">Level 5 – 50.000 m</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3 d-flex align-items-end">
+                        <button type="button" class="btn btn-sm btn-outline-secondary w-100" id="osmPresetHannover">
+                            Beispiel: Hannover Zentrum
+                        </button>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label small mb-1 d-block">Kategorien</label>
+                    <div class="d-flex flex-wrap gap-3">
+                        {% for st in osm_station_types %}
+                        <div class="form-check">
+                            <input class="form-check-input osm-type-check" type="checkbox" value="{{ st.key }}"
+                                   id="osmType_{{ st.key }}" checked>
+                            <label class="form-check-label" for="osmType_{{ st.key }}">{{ st.label }}</label>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+                <button type="button" class="btn btn-primary btn-sm" id="osmSearchBtn">
+                    <i class="bi bi-search me-1"></i>Suchen
+                </button>
+            </div>
+        </div>
+        <div id="osmResults">
+            <p class="text-muted mb-0">Noch keine Suche ausgeführt.</p>
+        </div>
+    </div><!-- /osmtest tab -->
+    {% endif %}
+
 </div><!-- /tab-content -->
 
 
@@ -1165,9 +1236,60 @@ function initStandardsVehicleRows() {
     });
 }
 
+function initOsmTest() {
+    var searchBtn = document.getElementById('osmSearchBtn');
+    if (searchBtn && searchBtn.dataset.bound !== '1') {
+        searchBtn.dataset.bound = '1';
+        searchBtn.addEventListener('click', function() {
+            var resultsEl = document.getElementById('osmResults');
+            var latEl = document.getElementById('osmLat');
+            var lonEl = document.getElementById('osmLon');
+            var radiusEl = document.getElementById('osmRadius');
+            if (!resultsEl || !latEl || !lonEl || !radiusEl) {
+                return;
+            }
+            var formData = new FormData();
+            formData.append('lat', latEl.value);
+            formData.append('lon', lonEl.value);
+            formData.append('radius', radiusEl.value);
+            document.querySelectorAll('.osm-type-check:checked').forEach(function(input) {
+                formData.append('osm_types', input.value);
+            });
+
+            searchBtn.disabled = true;
+            resultsEl.innerHTML = '<p class="text-muted mb-0"><i class="bi bi-hourglass-split me-1"></i>Suche l\u00e4uft\u2026</p>';
+
+            fetch('/standards/osm/search', {
+                method: 'POST',
+                body: formData,
+                headers: {'X-Requested-With': 'XMLHttpRequest'}
+            })
+                .then(function(response) { return response.text(); })
+                .then(function(html) { resultsEl.innerHTML = html; })
+                .catch(function() {
+                    resultsEl.innerHTML = '<div class="alert alert-danger mb-0">Anfrage fehlgeschlagen.</div>';
+                })
+                .finally(function() {
+                    searchBtn.disabled = false;
+                });
+        });
+    }
+
+    var presetBtn = document.getElementById('osmPresetHannover');
+    if (presetBtn && presetBtn.dataset.bound !== '1') {
+        presetBtn.dataset.bound = '1';
+        presetBtn.addEventListener('click', function() {
+            document.getElementById('osmLat').value = '52.3759';
+            document.getElementById('osmLon').value = '9.7320';
+        });
+    }
+}
+
 document.addEventListener('DOMContentLoaded', initStandardsPreview);
 document.addEventListener('app:content-updated', initStandardsPreview);
 document.addEventListener('DOMContentLoaded', initStandardsVehicleRows);
 document.addEventListener('app:content-updated', initStandardsVehicleRows);
+document.addEventListener('DOMContentLoaded', initOsmTest);
+document.addEventListener('app:content-updated', initOsmTest);
 </script>
 {% endblock %}

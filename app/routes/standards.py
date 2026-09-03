@@ -15,6 +15,7 @@ from app.access import (
     scoped,
     scoped_get_or_404,
 )
+from app.osm import STATION_TYPES, OverpassError, search_stations
 from app.models import (
     NamingLocation,
     NamingOrgType,
@@ -562,7 +563,37 @@ def index():
                            standard_vehicle_items_by_wache=standard_vehicle_items_by_wache,
                            preview_wachen=preview_wachen,
                            naming_presets=naming_presets,
-                           naming_tokens=NAMING_TOKEN_CATALOG)
+                           naming_tokens=NAMING_TOKEN_CATALOG,
+                           osm_station_types=STATION_TYPES)
+
+
+@standards_bp.route('/standards/osm/search', methods=['POST'])
+def osm_search():
+    """Admin-only test tool: look up rescue-relevant stations from OpenStreetMap
+    (via the public Overpass API) within a radius around a coordinate. Nothing
+    is persisted here yet, it's purely for evaluating the data source.
+    """
+    if not active_savegame_is_admin():
+        return render_template('standards_osm_results.html',
+                               error='Nur im Admin-Spielstand verfügbar.', stations=None), 403
+
+    lat = request.form.get('lat', type=float)
+    lon = request.form.get('lon', type=float)
+    radius = request.form.get('radius', type=int) or 5000
+    radius = max(100, min(radius, 50000))
+    type_keys = request.form.getlist('osm_types') or None
+
+    if lat is None or lon is None or not (-90 <= lat <= 90) or not (-180 <= lon <= 180):
+        return render_template('standards_osm_results.html',
+                               error='Bitte gültige Latitude und Longitude angeben.', stations=None)
+
+    try:
+        stations = search_stations(lat, lon, radius, type_keys)
+    except OverpassError as exc:
+        return render_template('standards_osm_results.html', error=str(exc), stations=None)
+
+    return render_template('standards_osm_results.html', error=None, stations=stations,
+                           lat=lat, lon=lon, radius=radius)
 
 
 @standards_bp.route('/standards/presets/add', methods=['POST'])
