@@ -181,9 +181,13 @@
                                 <br><small class="text-muted">Max. Fahrzeuge: <span id="wacheBuyMaxVeh"></span></small>
                             </div>
                             <div class="mb-3">
-                                <label class="form-label">Eigene Kategorie / Trenner (optional)</label>
-                                <input type="text" name="new_divider_label" class="form-control" placeholder="z.B. Neue Wache Nord">
-                                <small class="text-muted">Legt vor diesem Eintrag einen neuen Abschnitt im Planer an.</small>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="wacheBuyOwnCategory" name="create_own_category" value="1">
+                                    <label class="form-check-label" for="wacheBuyOwnCategory">
+                                        Eigene Kategorie für diese Wache anlegen
+                                    </label>
+                                </div>
+                                <small class="text-muted">Legt vor diesem Eintrag einen neuen Abschnitt an, benannt nach der Wache.</small>
                             </div>
                             <div class="mb-3">
                                 <label class="form-label">Notizen (optional)</label>
@@ -218,9 +222,13 @@
                                 <br><small class="text-muted">Zusätzliche Stellplätze: +<span id="extExtraSlots"></span></small>
                             </div>
                             <div class="mb-3">
-                                <label class="form-label">Eigene Kategorie / Trenner (optional)</label>
-                                <input type="text" name="new_divider_label" class="form-control" placeholder="z.B. Neue Wache Nord">
-                                <small class="text-muted">Legt vor diesem Eintrag einen neuen Abschnitt im Planer an.</small>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="extOwnCategory" name="create_own_category" value="1">
+                                    <label class="form-check-label" for="extOwnCategory">
+                                        Eigene Kategorie für diese Wache anlegen
+                                    </label>
+                                </div>
+                                <small class="text-muted">Legt vor diesem Eintrag einen neuen Abschnitt an, benannt nach der Wache.</small>
                             </div>
                             <div class="mb-3">
                                 <label class="form-label">Notizen (optional)</label>
@@ -256,9 +264,13 @@
                                 <br><small class="text-muted" id="upgradeCapacity"></small>
                             </div>
                             <div class="mb-3">
-                                <label class="form-label">Eigene Kategorie / Trenner (optional)</label>
-                                <input type="text" name="new_divider_label" class="form-control" placeholder="z.B. Neue Wache Nord">
-                                <small class="text-muted">Legt vor diesem Eintrag einen neuen Abschnitt im Planer an.</small>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="upgradeOwnCategory" name="create_own_category" value="1">
+                                    <label class="form-check-label" for="upgradeOwnCategory">
+                                        Eigene Kategorie für diese Wache anlegen
+                                    </label>
+                                </div>
+                                <small class="text-muted">Legt vor diesem Eintrag einen neuen Abschnitt an, benannt nach der Wache.</small>
                             </div>
                             <div class="mb-3">
                                 <label class="form-label">Notizen (optional)</label>

@@ -463,7 +463,8 @@ def add_wache_buy():
         flash('Wachen-Typ konnte nicht gefunden werden.', 'danger')
         return redirect(url_for('planner.index'))
 
-    _maybe_create_divider(request.form.get('new_divider_label'))
+    if request.form.get('create_own_category') == '1':
+        _maybe_create_divider(wache_name)
 
     max_prio = _next_priority()
     item = PlanItem(
@@ -634,7 +635,9 @@ def add_wache_upgrade():
         flash('Wache konnte nicht gefunden werden.', 'danger')
         return redirect(url_for('planner.index'))
 
-    _maybe_create_divider(request.form.get('new_divider_label'))
+    if request.form.get('create_own_category') == '1':
+        target_name = target_wache.name if target_wache else target_plan_item.wache_name
+        _maybe_create_divider(target_name)
 
     max_prio = _next_priority()
     item = PlanItem(
@@ -679,7 +682,9 @@ def add_wache_extension():
         flash('Wache konnte nicht gefunden werden.', 'danger')
         return redirect(url_for('planner.index'))
 
-    _maybe_create_divider(request.form.get('new_divider_label'))
+    if request.form.get('create_own_category') == '1':
+        extension_name = extension_wache.name if extension_wache else extension_plan_item.wache_name
+        _maybe_create_divider(extension_name)
 
     max_prio = _next_priority()
     item = PlanItem(
