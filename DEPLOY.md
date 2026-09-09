@@ -1,5 +1,10 @@
 # RescueOp Deployment Guide
 
+## Self-Hosting empfohlen (ohne externe Limits)
+
+Wenn du einen eigenen Remote-Server hast, nutze die neue Anleitung in `DEPLOY_SELFHOST.md`.
+Damit betreibst du App + PostgreSQL komplett selbst und ohne Free-Tier-Limits von PaaS-Anbietern.
+
 ## 1) Lokal starten (mit venv)
 
 ```bash
