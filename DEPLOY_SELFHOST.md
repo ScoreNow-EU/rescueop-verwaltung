@@ -57,6 +57,8 @@ Sofort oeffentlich per Server-IP (ohne Domain, nur HTTP):
 ./scripts/setup_nginx_public.sh _
 ```
 
+Dieser Modus setzt RescueOp als `default_server` auf Port 80.
+
 Beispiel fuer `/etc/nginx/sites-available/rescueop`:
 
 ```nginx

@@ -31,7 +31,12 @@ if ! command -v nginx >/dev/null 2>&1; then
 fi
 
 TMP_FILE="$(mktemp)"
-sed "s/__DOMAIN__/${DOMAIN}/g" "${TEMPLATE}" > "${TMP_FILE}"
+LISTEN_OPT=""
+if [[ "${DOMAIN}" == "_" ]]; then
+  LISTEN_OPT=" default_server"
+fi
+
+sed -e "s/__DOMAIN__/${DOMAIN}/g" -e "s/__LISTEN_OPT__/${LISTEN_OPT}/g" "${TEMPLATE}" > "${TMP_FILE}"
 
 ${SUDO} cp "${TMP_FILE}" "${TARGET_AVAILABLE}"
 rm -f "${TMP_FILE}"

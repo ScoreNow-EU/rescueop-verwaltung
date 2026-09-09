@@ -6,7 +6,7 @@ from datetime import datetime
 from sqlalchemy import MetaData, create_engine, select
 from sqlalchemy.orm import joinedload, selectinload
 
-from flask import Blueprint, render_template, request, redirect, url_for, flash, send_file
+from flask import Blueprint, render_template, request, redirect, url_for, flash, send_file, current_app
 from app import db
 from app import DATA_DIR
 from app.access import (
@@ -105,6 +105,9 @@ DEFAULT_NAMING_PRESETS = [
 ]
 
 EXPORT_TABLES = [
+    'user',
+    'savegame',
+    'savegame_membership',
     'vehicle_module',
     'vehicle_type',
     'vehicle_type_modules',
@@ -925,6 +928,7 @@ def export_database():
     try:
         _export_current_db_to_sqlite(tmp_path)
     except Exception:
+        current_app.logger.exception('Backup export failed while creating SQLite snapshot.')
         if os.path.isfile(tmp_path):
             os.remove(tmp_path)
         flash('Export fehlgeschlagen.', 'danger')
