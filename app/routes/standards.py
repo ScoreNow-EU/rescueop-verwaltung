@@ -1,7 +1,9 @@
 import os
 import sqlite3
 import shutil
+import tempfile
 from datetime import datetime
+from sqlalchemy import MetaData, create_engine, select
 from sqlalchemy.orm import joinedload, selectinload
 
 from flask import Blueprint, render_template, request, redirect, url_for, flash, send_file
@@ -102,9 +104,57 @@ DEFAULT_NAMING_PRESETS = [
     },
 ]
 
+EXPORT_TABLES = [
+    'vehicle_module',
+    'vehicle_type',
+    'vehicle_type_modules',
+    'vehicle_type_standard_modules',
+    'wache_type',
+    'wache_level',
+    'wache_upgrade',
+    'wache_standard_vehicle',
+    'wache_standard_vehicle_item',
+    'wache_standard_vehicle_item_modules',
+    'naming_org_type',
+    'naming_location',
+    'naming_preset',
+    'my_wache',
+    'my_vehicle',
+    'plan_item',
+    'my_wache_upgrades',
+    'my_vehicle_modules',
+    'plan_item_modules',
+]
+
 
 def _database_path():
     return os.path.join(DATA_DIR, 'resqop.db')
+
+
+def _export_current_db_to_sqlite(target_path):
+    source_metadata = db.metadata
+    export_metadata = MetaData()
+
+    for table_name in EXPORT_TABLES:
+        source_table = source_metadata.tables.get(table_name)
+        if source_table is not None:
+            source_table.to_metadata(export_metadata)
+
+    sqlite_engine = create_engine(f'sqlite:///{target_path}')
+    try:
+        export_metadata.create_all(sqlite_engine)
+
+        with db.engine.connect() as src_conn, sqlite_engine.begin() as dst_conn:
+            for table_name in EXPORT_TABLES:
+                src_table = source_metadata.tables.get(table_name)
+                dst_table = export_metadata.tables.get(table_name)
+                if src_table is None or dst_table is None:
+                    continue
+                rows = src_conn.execute(select(src_table)).mappings().all()
+                if rows:
+                    dst_conn.execute(dst_table.insert(), [dict(r) for r in rows])
+    finally:
+        sqlite_engine.dispose()
 
 
 def _sqlite_has_table(conn, table_name):
@@ -860,18 +910,29 @@ def save_wache_standard_vehicles(wtid):
 @standards_bp.route('/backup/export', methods=['GET'])
 def export_database():
     db_uri = str(db.engine.url)
-    if not db_uri.startswith('sqlite:'):
-        flash('Export ist nur für SQLite verfügbar. Für PostgreSQL nutze bitte Datenbank-Backups beim Hoster.', 'danger')
-        return redirect(url_for('standards.index'))
-
-    db_path = _database_path()
-    if not os.path.isfile(db_path):
-        flash('Datenbankdatei wurde nicht gefunden.', 'danger')
-        return redirect(url_for('standards.index'))
-
     timestamp = datetime.now().strftime('%Y%m%d-%H%M%S')
     filename = f'resqop-backup-{timestamp}.db'
-    return send_file(db_path, as_attachment=True, download_name=filename)
+
+    if db_uri.startswith('sqlite:'):
+        db_path = _database_path()
+        if not os.path.isfile(db_path):
+            flash('Datenbankdatei wurde nicht gefunden.', 'danger')
+            return redirect(url_for('standards.index'))
+        return send_file(db_path, as_attachment=True, download_name=filename)
+
+    tmp_fd, tmp_path = tempfile.mkstemp(prefix='resqop-export-', suffix='.db')
+    os.close(tmp_fd)
+    try:
+        _export_current_db_to_sqlite(tmp_path)
+    except Exception:
+        if os.path.isfile(tmp_path):
+            os.remove(tmp_path)
+        flash('Export fehlgeschlagen.', 'danger')
+        return redirect(url_for('standards.index'))
+
+    response = send_file(tmp_path, as_attachment=True, download_name=filename)
+    response.call_on_close(lambda: os.path.isfile(tmp_path) and os.remove(tmp_path))
+    return response
 
 
 @standards_bp.route('/backup/import', methods=['POST'])

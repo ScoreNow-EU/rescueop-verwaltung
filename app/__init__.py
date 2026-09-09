@@ -6,6 +6,7 @@ from flask_login import LoginManager, current_user
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import and_, event
 from sqlalchemy.orm import selectinload
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 
 db = SQLAlchemy()
@@ -24,6 +25,7 @@ def load_user(user_id):
 
 def create_app():
     app = Flask(__name__, static_folder=os.path.join(BASE_DIR, 'app', 'static'))
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1)
 
     os.makedirs(DATA_DIR, exist_ok=True)
     os.makedirs(os.path.join(ASSETS_DIR, 'vehicles'), exist_ok=True)

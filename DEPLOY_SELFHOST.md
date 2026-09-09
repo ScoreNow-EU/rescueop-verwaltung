@@ -36,7 +36,26 @@ docker compose logs -f web
 
 Die App lauscht intern auf `127.0.0.1:8000`.
 
+Wichtig: Wenn auf derselben Server-IP bereits andere Projekte laufen (anderer `default_server`),
+ist die direkte IP ggf. nicht RescueOp. Nutze dann eine eigene Domain/Subdomain mit passendem
+`server_name` (z. B. `rescueop.example.com`).
+
 ## 4) Reverse Proxy + HTTPS (Nginx)
+
+Schnellsetup mit Script (empfohlen):
+
+```bash
+chmod +x ./scripts/setup_nginx_public.sh
+./scripts/setup_nginx_public.sh example.com admin@example.com
+```
+
+Das Script aktiviert die Nginx-Site und richtet bei vorhandenem `certbot` direkt HTTPS ein.
+
+Sofort oeffentlich per Server-IP (ohne Domain, nur HTTP):
+
+```bash
+./scripts/setup_nginx_public.sh _
+```
 
 Beispiel fuer `/etc/nginx/sites-available/rescueop`:
 
@@ -61,6 +80,14 @@ sudo ln -s /etc/nginx/sites-available/rescueop /etc/nginx/sites-enabled/rescueop
 sudo nginx -t
 sudo systemctl reload nginx
 sudo certbot --nginx -d example.com
+```
+
+Firewall (falls UFW aktiv):
+
+```bash
+sudo ufw allow OpenSSH
+sudo ufw allow 'Nginx Full'
+sudo ufw enable
 ```
 
 ## 5) Updates deployen
